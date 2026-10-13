@@ -143,7 +143,7 @@ tiger sync
 rm vendir.yml vendir.lock.yml
 ```
 
-vendir's `ref: origin/<branch>` becomes `--ref <branch>` (or nothing, for the default branch), a tag stays a tag, and `includePaths`/`excludePaths` become `include`/`exclude`. vendir's lock file has no equivalent: pin the refs that need exact versions.
+vendir's `ref: origin/<branch>` becomes `--ref <branch>` (or nothing, for the default branch), a tag stays a tag, and `includePaths`/`excludePaths` become `include`/`exclude`. An `http` source that downloads a branch tarball (`https://github.com/<owner>/<repo>/archive/refs/heads/<branch>.tar.gz`) becomes the repo URL with that branch: no tarball needed, since tiger already fetches one commit without history or tags. vendir's lock file has no equivalent: pin the refs that need exact versions.
 
 ## What's next
 
