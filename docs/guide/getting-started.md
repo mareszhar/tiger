@@ -94,14 +94,31 @@ Choose one:
 
 tiger never handles credentials: git does, with your **global** git config. A project's local config (`git config --local`) doesn't apply, so a ref resolves the same from every project and from the scheduled job.
 
-With HTTPS and a read-only token scoped to one repo, give git a rewrite for that repo only. Git uses the longest matching rewrite, so it wins over broader ones:
+The cleanest setup is a read-only token per private repo (a fine-grained token with *Contents: read*), kept in the macOS Keychain and handed out by git's `osxkeychain` helper only for that repo. Once per machine, tell git to tell tokens apart by repo path:
 
 ```sh
-git config --global url."https://<token>@github.com/me/private-lib".insteadOf "https://github.com/me/private-lib"
-tiger add https://github.com/me/private-lib
+git config --global credential.https://github.com.useHttpPath true
 ```
 
-`tiger.toml` keeps the plain URL, so it's safe to commit; the token stays in your git config. A credential helper works the same way (with `credential.useHttpPath = true` for per-repo tokens). SSH URLs work too, but every fetch then uses your SSH key; if approving it takes a fingerprint, the scheduled job would ask each time, so prefer HTTPS for refs.
+Then once per private repo, from any folder, run `git credential approve`, paste these lines with your values, and finish with an empty line:
+
+```text
+protocol=https
+host=github.com
+path=me/private-lib
+username=x-access-token
+password=<token>
+```
+
+The path must match the URL as written: `me/private-lib` serves `https://github.com/me/private-lib`, the form `tiger add me/private-lib` writes; a clone of `https://github.com/me/private-lib.git` needs a second entry with `path=me/private-lib.git`. Then add the ref as usual:
+
+```sh
+tiger add me/private-lib
+```
+
+Fetches never prompt: git reads the token from the Keychain, in every project and in the scheduled job. Public repos need no token. `tiger.toml` keeps the plain URL, so it's safe to commit. Homebrew's git already uses `osxkeychain`; with another git, also run `git config --global credential.helper osxkeychain`.
+
+A URL rewrite works too, at the cost of a token in plain text in `~/.gitconfig`: `git config --global url."https://<token>@github.com/me/private-lib".insteadOf "https://github.com/me/private-lib"`. A rewrite that puts a token into every `https://github.com/` URL stops the Keychain from being asked at all, so use one approach or the other. SSH URLs work, but every fetch then uses your SSH key; if approving it takes a fingerprint, the scheduled job would ask each time, so prefer HTTPS for refs.
 
 Someone without access sees that ref fail with git's message while the rest sync.
 
