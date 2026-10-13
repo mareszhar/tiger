@@ -4,6 +4,8 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-13
+
 The first release: read-only, up-to-date copies of other repos inside your project, so agents can read the source instead of guessing.
 
 ### Added
@@ -22,4 +24,5 @@ The first release: read-only, up-to-date copies of other repos inside your proje
 - **`tiger gc`** prunes what no project uses from the store; **`tiger config`** shows and changes global settings (`dir`, `store`, `concurrency`, `schedule`).
 - Binaries for macOS and Linux (arm64 and x64), installable with `brew install mareszhar/tap/tiger`.
 
-[unreleased]: https://github.com/mareszhar/tiger/commits/main
+[unreleased]: https://github.com/mareszhar/tiger/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/mareszhar/tiger/releases/tag/v0.1.0
