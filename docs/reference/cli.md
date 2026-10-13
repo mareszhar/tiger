@@ -5,7 +5,7 @@ Every command is non-interactive and safe to re-run. Commands find the project b
 ## Contents
 
 - [Global flags](#global-flags) · [Exit codes](#exit-codes)
-- [`init`](#tiger-init) · [`add`](#tiger-add) · [`rm`](#tiger-rm) · [`sync`](#tiger-sync) · [`pin`](#tiger-pin) · [`unpin`](#tiger-unpin) · [`status`](#tiger-status) · [`gc`](#tiger-gc) · [`config`](#tiger-config)
+- [`init`](#tiger-init) · [`add`](#tiger-add) · [`rm`](#tiger-rm) · [`sync`](#tiger-sync) · [`pin`](#tiger-pin) · [`unpin`](#tiger-unpin) · [`status`](#tiger-status) · [`show`](#tiger-show) · [`store`](#tiger-store) · [`gc`](#tiger-gc) · [`config`](#tiger-config)
 - [JSON output](#json-output) · [Environment](#environment)
 
 ## Global flags
@@ -136,6 +136,52 @@ tiptap    main (default branch)  1c9e0b2  up to date
 zod       tag v3.22.4            e7a9b9b  pinned
 internal  main (default branch)  4f2a91c  unknown · git: Permission denied (publickey).
 ```
+
+## `tiger show`
+
+```sh
+tiger show [<id>…]
+```
+
+What each ref's copy holds, from the state file, the store, and the copy itself; never the network. Use it to confirm a ref picked up the commit you expected.
+
+```text
+zod  https://github.com/colinhacks/zod
+  tracks    tag v3.22.4 (pinned)
+  commit    e7a9b9b  2023-10-12  v3.22.4  (Colin McDonnell)
+  copied    2026-10-13 06:10 UTC (2h ago) · checked 5m ago
+  copy      tiger/zod · 412 files · 2.1 MB · copy-on-write clone
+  filters   include src/** · exclude **/*.test.ts
+  also in   ~/code/editor as zod (8a1b2c3)
+```
+
+- **commit**: the commit's short SHA, committer date, subject, and author. Without the store (deleted, or never shared), only the SHA.
+- **copied**: when the copy was last made; **checked**: when a sync last confirmed it matches upstream (or its pin).
+- **also in**: other registered projects with a ref to the same repo, and the commit each holds.
+- A ref that never synced says `not synced yet`; one whose entry changed since says so, with the command that rebuilds it.
+
+`--json` gives, per ref: `id`, `url`, `ref`, `synced`, `kind`, `tracks`, `commit` (`sha`, `date`, `author`, `subject`), `copied_at` and `checked_at` (Unix seconds), `copy_mode`, `path`, `files`, `bytes`, `include`, `exclude`, `history`, `release_notes`, `elsewhere` (`project`, `id`, `commit`), `config_changed`.
+
+## `tiger store`
+
+```sh
+tiger store
+```
+
+What the shared store holds, and who uses it; never the network, never writes.
+
+```text
+~/.tiger · 85.2 MB
+projects
+  ~/code/editor     4 refs · synced 2h ago
+  ~/old/prototype   missing: `tiger gc` forgets it
+repos
+  github.com/colinhacks/zod · 6.3 MB
+    e7a9b9b  2023-10-12  v3.22.4  →  ~/code/editor (zod), ~/code/docs (zod)
+    1c9e0b2  2023-09-01  v3.22.2  →  unused: `tiger gc` removes it
+```
+
+Each repo lists one line per tree (a commit in use), newest first, with the projects and ids whose copy is that commit. `--json` gives `path`, `bytes`, `projects` (`project`, `refs`, `synced_at`, `exists`), and `repos` (`key`, `bytes`, `trees` with `commit`, `bytes`, `used_by`).
 
 ## `tiger gc`
 

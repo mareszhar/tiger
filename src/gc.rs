@@ -103,7 +103,7 @@ fn is_sha(name: &str) -> bool {
     git::is_full_sha(name)
 }
 
-fn sha_dirs(trees: &Path) -> Vec<(String, PathBuf)> {
+pub fn sha_dirs(trees: &Path) -> Vec<(String, PathBuf)> {
     let mut found = Vec::new();
     walk_dirs(trees, &mut |dir| {
         let name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -117,7 +117,7 @@ fn sha_dirs(trees: &Path) -> Vec<(String, PathBuf)> {
     found
 }
 
-fn repo_dirs(repos: &Path) -> Vec<(String, PathBuf)> {
+pub fn repo_dirs(repos: &Path) -> Vec<(String, PathBuf)> {
     let mut found = Vec::new();
     walk_dirs(repos, &mut |dir| {
         let name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();

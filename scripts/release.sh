@@ -1,7 +1,8 @@
 #!/bin/sh
-# Releases tiger: bumps the version, runs the gates, commits, tags, and pushes.
-# Pushing the tag starts the release workflow, which builds the binaries,
-# publishes the GitHub release, and updates the Homebrew formula.
+# Releases tiger: bumps the version, stamps the changelog, runs the gates,
+# commits, tags, and pushes. Pushing the tag starts the release workflow,
+# which builds the binaries, publishes the GitHub release with the
+# changelog's section as its notes, and updates the Homebrew formula.
 #
 #   scripts/release.sh patch|minor|major    bump, then release
 #   scripts/release.sh 0.1.0                release this exact version
@@ -28,11 +29,22 @@ case "$1" in
   *) fail "expected patch, minor, major, or a version like 0.1.0" ;;
 esac
 tag="v$version"
+repo_url="https://github.com/mareszhar/tiger"
 [ -z "$(git tag --list "$tag")" ] || fail "tag $tag already exists locally"
 [ -z "$(git ls-remote --tags origin "refs/tags/$tag")" ] || fail "tag $tag already exists on origin"
 
+# The Unreleased section becomes this version's notes, so it can't be empty.
+unreleased=$(awk '
+  index($0, "## [Unreleased]") == 1 { on = 1; next }
+  on && /^## \[/ { exit }
+  on && /^\[[^]]+\]: / { next }
+  on { print }
+' CHANGELOG.md | tr -d '[:space:]')
+[ -n "$unreleased" ] || fail "CHANGELOG.md has nothing under ## [Unreleased]; describe what changed first"
+previous=$(sed -n 's/^## \[\([0-9][0-9.]*\)\].*/\1/p' CHANGELOG.md | head -1)
+
 restore() {
-  git checkout -- Cargo.toml Cargo.lock 2>/dev/null || true
+  git checkout -- Cargo.toml Cargo.lock CHANGELOG.md 2>/dev/null || true
   git tag -d "$tag" >/dev/null 2>&1 || true
 }
 trap 'restore; echo "release: stopped; version files restored, nothing pushed" >&2' EXIT
@@ -41,19 +53,28 @@ echo "releasing $tag (was $current)"
 if [ "$version" != "$current" ]; then
   sed -i.bak "s/^version = \"$current\"$/version = \"$version\"/" Cargo.toml && rm Cargo.toml.bak
 fi
+# Stamp the changelog: Unreleased becomes this version, and its links follow.
+if [ -n "$previous" ]; then
+  version_link="[$version]: $repo_url/compare/v$previous...$tag"
+else
+  version_link="[$version]: $repo_url/releases/tag/$tag"
+fi
+awk -v version="$version" -v date="$(date +%Y-%m-%d)" -v unreleased_link="[unreleased]: $repo_url/compare/$tag...HEAD" -v version_link="$version_link" '
+  index($0, "## [Unreleased]") == 1 { print; print ""; print "## [" version "] - " date; next }
+  /^\[unreleased\]: / { print unreleased_link; print version_link; next }
+  { print }
+' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
+scripts/release-notes.sh "$version" >/dev/null
+
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
 
-if [ -n "$(git status --porcelain -- Cargo.toml Cargo.lock)" ]; then
-  git add Cargo.toml Cargo.lock
-  git commit -m "🔖 release $tag"
-fi
+git add Cargo.toml Cargo.lock CHANGELOG.md
+git commit -m "🔖 release $tag"
 git tag -a "$tag" -m "tiger $tag"
 trap - EXIT
 
 # Commit and tag go together, or neither does.
 git push --atomic --follow-tags || fail "the push failed; the commit and tag are local. Fix the cause, then run: git push --atomic --follow-tags"
-echo "pushed $tag. Next:"
-echo "  gh run watch                                   # follow the release workflow"
-echo "  gh release edit $tag --notes-file __temp__/v$(echo "$version" | tr -d .)-changelog.md"
+echo "pushed $tag; the release workflow publishes it. Follow it with: gh run watch"

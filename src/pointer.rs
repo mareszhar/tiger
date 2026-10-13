@@ -15,7 +15,7 @@ pub fn contents(project: &Project) -> String {
          \n\
          - **Read and search freely.** Each folder is one ref: `rg \"pattern\" {dir}/<id>`.\n\
          - **Don't edit files in ref folders.** They are read-only, and every sync replaces them.\n\
-         - **Refresh with `tiger sync`;** `tiger status` shows which refs are behind upstream.\n\
+         - **Refresh with `tiger sync`;** `tiger status` shows which refs are behind upstream, and `tiger show <id>` which commit a copy holds.\n\
          - **Add or remove refs with `tiger add <url>` and `tiger rm <id>`,** or by editing `{FILE}`.\n\
          - Files here that aren't ref folders are left alone by tiger.\n"
     )

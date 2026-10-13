@@ -54,6 +54,7 @@ finish        delete refs removed from the config (only ids in the state file)
 | `releases.rs` | GitHub release notes |
 | `state.rs` | `.tiger-state.json`, the project lock |
 | `status.rs` | Verdicts |
+| `show.rs` | `show` and `store`: introspection without the network |
 | `gc.rs` | Pruning the store |
 | `settings.rs` | Global settings |
 | `schedule.rs` | The launchd agent / systemd timer |

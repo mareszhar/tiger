@@ -84,6 +84,34 @@ pub fn display_path(path: &Path) -> String {
     path.display().to_string()
 }
 
+/// A Unix time as `2026-10-13 06:12 UTC`.
+pub fn format_time(secs: u64) -> String {
+    // Days to civil date (Howard Hinnant's algorithm).
+    let days = (secs / 86_400) as i64;
+    let (hour, minute) = ((secs % 86_400) / 3600, (secs % 3600) / 60);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02} UTC")
+}
+
+/// How long ago a Unix time was: `just now`, `5m ago`, `3h ago`, `2d ago`.
+pub fn ago(secs: u64) -> String {
+    let elapsed = now_secs().saturating_sub(secs);
+    match elapsed {
+        0..60 => "just now".into(),
+        60..3600 => format!("{}m ago", elapsed / 60),
+        3600..86_400 => format!("{}h ago", elapsed / 3600),
+        _ => format!("{}d ago", elapsed / 86_400),
+    }
+}
+
 /// Seconds as `850ms`, `3.1s`, or `2m 05s`.
 pub fn format_duration_ms(ms: u128) -> String {
     if ms < 1000 {
@@ -143,6 +171,13 @@ mod tests {
         assert_eq!(parse_interval("0h"), None);
         assert_eq!(parse_interval("6"), None);
         assert_eq!(parse_interval("6w"), None);
+    }
+
+    #[test]
+    fn formats_unix_times_as_utc() {
+        assert_eq!(format_time(0), "1970-01-01 00:00 UTC");
+        assert_eq!(format_time(951_782_400), "2000-02-29 00:00 UTC");
+        assert_eq!(format_time(1_791_871_820), "2026-10-13 06:10 UTC");
     }
 
     #[test]

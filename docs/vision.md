@@ -143,14 +143,12 @@ tiger **is not**:
 | Language | Rust | A 3 MB binary per platform with no runtime, fast startup, and `toml_edit`, the best comment-preserving TOML editor available |
 | Config format | TOML (`tiger.toml`) | Comments are first-class, agents write it well, and it is data, so no code runs on sync |
 | Global settings | `~/.config/tiger/config.toml`, edited with `tiger config` | Settings are kept; the store is disposable, so they live apart |
-| Lock file | None | A branch means "latest"; a project that needs exact versions pins them in its config. State lives in the gitignored refs folder, so syncing never dirties `git status` |
 | Default refs folder | `tiger/` | Short and self-describing with `TIGER.md` inside; `dir` changes it |
 | Branch/tag clash | An error that names both full refnames | Branch means follow, tag means pin; a silent guess changes behavior |
 | No copy-on-write | Full copies, a warning when it happens, the mode in `tiger status` | Correct everywhere, and never silently expensive |
-| Background refresh | Opt-in schedule, off by default | One `ls-remote` per repo is cheap enough to run hourly |
-| Distribution | GitHub Releases and a Homebrew tap; a scoped npm package later if wanted | The unscoped npm name `tiger` is taken; the command is `tiger` everywhere |
 | Runtime requirement | `git` on `PATH` | Nothing else |
-| vendir converter | None | A config has a handful of entries; an agent converts one in a minute |
+
+Decisions made for now (distribution, lock files, platforms, defaults) live in [status](./status.md), each with what would reopen it.
 
 ## 7. Road to 1.0
 

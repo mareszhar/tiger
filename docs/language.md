@@ -33,6 +33,7 @@ project ──has──▶ tiger.toml ──lists──▶ refs (id → url, ref
 | **state** | `.tiger-state.json`: what tiger last put in the refs folder. How tiger knows what it owns. | The config. |
 | **registry** | The store's list of projects, so `--everywhere` and `gc` can find them. | — |
 | **sync** | Make copies match the config, fetching only what changed. | Pull, update, refresh. |
+| **copied** / **checked** | When a copy was last made / when a sync last confirmed it current. A copy can be days old and checked a minute ago. | — |
 | **propagate** | Let `sync --everywhere` from another project update this one. | — |
 | **schedule** | The background job that runs `sync --everywhere` at an interval. | — |
 | **release notes** | `<id>.releases.md`, from GitHub Releases. | A changelog in the repo. |
@@ -44,7 +45,8 @@ Sync reports one **status** per ref: `new`, `changed`, `unchanged`, `failed`, or
 
 > **A name says what kind of thing it is, and means one thing everywhere.**
 
-- **Commands are verbs** the user would say: `add`, `rm`, `sync`, `pin`, `unpin`, `status`, `gc`, `config`, `init`. `rm` matches git and the shell; it is the only abbreviation.
+- **Commands are verbs** the user would say: `add`, `rm`, `sync`, `pin`, `unpin`, `show`, `init`. `rm` matches git and the shell; it is the only abbreviation. Commands that report on one thing are named after it: `status`, `store`, `config`; `gc` keeps git's name.
+- **`status` asks upstream; `show` and `store` never do.** `status` answers "is it behind?"; `show` answers "what do I have?"; `store` answers "what does this machine hold?".
 - **Flags say what they change**: `--everywhere`, `--offline`, `--force`. A flag that turns something off starts with `--no-`: `--no-sync`, `--no-gitignore`, `--no-propagate`.
 - **Config fields are nouns or yes-or-no facts** without prefixes: `url`, `ref`, `include`, `history`, `releases`, `propagate`. A boolean is `true` when the feature is on.
 - **JSON keys are `snake_case`** and use the vocabulary above: `status`, `verdict`, `copy_mode`, `removed_trees`. Enum values are lowercase words joined by `-`: `up-to-date`, `config-changed`.
@@ -82,7 +84,7 @@ For every document, help text, header, and comment tiger ships:
 - **Lead with intent.** Say what a thing is for before how it works.
 - **Concrete by default.** Pair each contract with the smallest command, config snippet, or output that shows it.
 - **Decisions, not deliberations.** State what tiger does. Rationale earns a sentence when it prevents a known mistake.
-- **Current, not historical.** Describe how tiger works now; the changelog narrates change.
+- **Current, not historical.** Describe how tiger works now; `CHANGELOG.md` alone narrates change.
 - **One home per fact.** Link to the owner instead of restating. The [reference](./reference/cli.md) owns exact behavior; guides own how-to; this document owns words.
 - **Precise, not padded.** No hedging, no filler, no "simply".
 - **Renderer-owned layout.** One paragraph per line in Markdown; Markdown wraps.

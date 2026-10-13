@@ -31,6 +31,7 @@ pub fn header(dir: &str, gitignored: bool) -> String {
          #   tiger add <url> [--as <id>] [--ref <branch|tag|sha>] [--note \"…\"]\n\
          #   tiger sync [<id>…]     fetch only what changed upstream\n\
          #   tiger status           which refs are behind upstream\n\
+         #   tiger show [<id>…]     which commit each copy holds, and when\n\
          #   tiger rm <id> · tiger pin <id> [<tag|sha>] · tiger unpin <id> · tiger help\n\
          # {}\n",
         "─".repeat(78)

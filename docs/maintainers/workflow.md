@@ -6,26 +6,28 @@ How changes to tiger are planned, carried out, reviewed, and released, so any pe
 
 | Change | How it moves |
 | --- | --- |
-| **Small**: a bug fix, a doc correction, one flag | Change, test, and doc together. A breaking change gets a changelog entry with its migration. |
-| **Initiative**: multi-step work, work across sessions or people, a release | Planned in a handoff, executed against a tracker, reviewed in round reports, announced in a changelog. |
+| **Small**: a bug fix, a doc correction, one flag | Change, test, doc, and changelog entry together. |
+| **Initiative**: multi-step work, work across sessions or people, a release | Planned in a handoff, executed against a tracker, reviewed in round reports, announced in the changelog. |
 
 It is an initiative if you would want to resume it tomorrow, or hand it to someone else, without re-reading the whole diff.
 
 ## 2. Records
 
-An initiative is named after the version it ships in, without dots: `v010` for 0.1.0. Records live in `__temp__/`, which is gitignored.
+An initiative is named after the version it ships in, without dots: `v010` for 0.1.0. Its working records live in `__temp__/`, which is gitignored; the changelog and status are tracked.
 
 | Record | Answers | File |
 | --- | --- | --- |
 | **handoff** | What does this release change, and how do we know it's done? | `__temp__/v010-handoff.md` |
 | **tracker** | Where is execution, what was decided, what was measured, what's next? | `__temp__/v010-tracker.md` |
 | **round report** | How good is this pass, and what must change before the next? | `__temp__/v010-round-<n>.md` |
-| **changelog** | What changed for someone using tiger, and how do they migrate? | `__temp__/v010-changelog.md`, then the release tag's message |
+| **changelog** | What changed for someone using tiger, and how do they migrate? | [`CHANGELOG.md`](../../CHANGELOG.md), under `## [Unreleased]` until released |
+| **status** | Which decisions are for now, and what would reopen them? | [`docs/status.md`](../status.md) |
 
 - The **handoff** is written against the last release and never records progress. When execution reveals something new, the handoff gains a plan for it, written as if nobody had started.
 - The **tracker** is the implementer's memory: decisions, probes with numbers, gate results, and one row per requirement answered by a test name or `file:line`.
 - **Round reports** are never rewritten; their sequence is the initiative's history.
-- The **changelog** speaks the user's vocabulary, with before/after for every breaking change so an agent can migrate a config mechanically.
+- The **changelog** follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/): every user-visible change lands under `## [Unreleased]` in the same change that makes it, grouped as Added, Changed, Deprecated, Removed, Fixed, or Security. It speaks the user's vocabulary, with before/after for every breaking change so an agent can migrate a config mechanically. It is the one tracked document that narrates history; the release script stamps it, and each version's section becomes that GitHub release's notes.
+- **Status** lists decisions made for now, each with the trigger that reopens it. When a trigger fires, the decision becomes an initiative; when it's settled for good, it moves to [vision §6](../vision.md#6-decisions).
 
 Plans describe what isn't true yet, so they stay out of tracked docs. A fact worth keeping moves into a canonical doc, rewritten in the present tense. Deleting records is the maintainer's call.
 
@@ -36,6 +38,7 @@ Plans describe what isn't true yet, so they stay out of tracked docs. A fact wor
 - **Every promise has a test that fails when it breaks** ([evidence](./evidence.md)).
 - **Disclose weak evidence.** Separate what was run from what was only read.
 - **Challenge the plan.** An implementer who believes a step is wrong says so before building it.
+- **Decide for now, out loud.** A decision that is right today but not forever goes in [status](../status.md) with the trigger that reopens it, so nobody re-argues it early or forgets it late.
 
 ## 4. Working a handoff
 
@@ -49,21 +52,15 @@ Plans describe what isn't true yet, so they stay out of tracked docs. A fact wor
 
 A version numbers the contract: below 1.0, breaking changes bump the minor, everything else the patch. Releases are the maintainer's; an agent prepares one and runs the release script only when asked.
 
-1. The gates are green on a clean `main`, CI passed on macOS and Linux, and `__temp__/v<version>-changelog.md` is final.
+1. The gates are green on a clean `main`, CI passed on macOS and Linux, and `## [Unreleased]` in `CHANGELOG.md` says everything this release changes.
 2. Run the release script in a terminal:
 
    ```sh
    scripts/release.sh patch        # or minor, major, or an exact version: scripts/release.sh 0.1.0
    ```
 
-   It requires a clean tree and a branch with an upstream, rejects an existing tag, bumps `version` in `Cargo.toml`, runs the gates (which also update `Cargo.lock`), commits `🔖 release v<version>` when the version changed, creates the annotated tag `v<version>` with message `tiger v<version>`, and runs `git push --atomic --follow-tags`. If anything fails before the push, it restores the version files and removes the tag. If the push itself fails, the commit and tag stay local; fix the cause and rerun the push.
-3. The tag starts the release workflow (`gh run watch` follows it). It checks the tag matches `Cargo.toml`, tests and builds four binaries (macOS and Linux, arm64 and x64), publishes the GitHub release, and pushes the formula to `mareszhar/homebrew-tap`.
-4. Replace the generated release notes with the changelog. The GitHub release is the changelog's permanent home; the repository has no `CHANGELOG.md`.
+   It requires a clean tree, a branch with an upstream, and a non-empty `## [Unreleased]`; rejects an existing tag; bumps `version` in `Cargo.toml`; stamps the changelog (`## [Unreleased]` becomes `## [<version>] - <date>`, with a fresh empty `Unreleased` above it and compare links below); runs the gates (which also update `Cargo.lock`); commits `🔖 release v<version>`; creates the annotated tag `v<version>` with message `tiger v<version>`; and runs `git push --atomic --follow-tags`. If anything fails before the push, it restores the version files and the changelog and removes the tag. If the push itself fails, the commit and tag stay local; fix the cause and rerun the push.
+3. The tag starts the release workflow (`gh run watch` follows it). It checks the tag matches `Cargo.toml` and the changelog has notes for it, tests and builds four binaries (macOS and Linux, arm64 and x64), publishes the GitHub release with the version's changelog section as its notes (`scripts/release-notes.sh <version>` prints them), and pushes the formula to `mareszhar/homebrew-tap`.
+4. Check the install a user gets: `brew upgrade tiger` (or `brew install mareszhar/tap/tiger`), then `tiger --version`.
 
-   ```sh
-   gh release edit v0.1.0 --notes-file __temp__/v010-changelog.md
-   ```
-
-5. Check the install a user gets: `brew upgrade tiger` (or `brew install mareszhar/tap/tiger`), then `tiger --version`.
-
-**One-time setup for the tap:** create the public repository `mareszhar/homebrew-tap` (Homebrew finds `<owner>/tap` at `<owner>/homebrew-tap`), then add a `HOMEBREW_TAP_TOKEN` secret to this repository: a fine-grained token with *Contents: read and write* on `homebrew-tap` only. Without it, the GitHub release still publishes and only the tap step fails.
+**One-time setup for the tap:** create the public repository `mareszhar/homebrew-tap` with a README, so it has a `main` branch (Homebrew finds `<owner>/tap` at `<owner>/homebrew-tap`; one tap holds every formula you publish, in `Formula/`), then add a `HOMEBREW_TAP_TOKEN` secret to this repository: a fine-grained token with *Contents: read and write* on `homebrew-tap` only. Without it, the GitHub release still publishes and only the tap step fails.

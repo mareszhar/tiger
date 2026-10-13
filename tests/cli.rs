@@ -559,6 +559,44 @@ fn global_git_config_applies_and_a_projects_local_config_does_not() {
 }
 
 #[test]
+fn show_and_store_say_what_each_copy_holds_without_the_network() {
+    let env = Env::new();
+    let (dir, url) = env.upstream("lib");
+    let first = env.git(&dir, &["rev-parse", "HEAD"]);
+    let one = env.project("one");
+    let two = env.project("two");
+    env.ok(&one, &["add", &url], 0);
+    env.ok(&two, &["add", &url, "--as", "library"], 0);
+    env.ok(&one, &["add", &url, "--as", "later", "--no-sync"], 0);
+    let latest = env.commit(&dir, &[("src/lib.ts", "export const a = 2\n")]);
+    env.ok(&two, &["sync"], 0);
+    std::fs::remove_dir_all(&dir).unwrap();
+
+    let shown = env.json(&one, &["show"], 0);
+    let lib = &shown["refs"][0];
+    assert_eq!(lib["commit"]["sha"], first.as_str());
+    assert_eq!(lib["commit"]["subject"], "change");
+    assert_eq!(lib["commit"]["date"].as_str().unwrap().len(), 10);
+    assert_eq!(lib["files"], 2);
+    assert_eq!(lib["elsewhere"][0]["id"], "library");
+    assert_eq!(lib["elsewhere"][0]["commit"], latest.as_str(), "the other project moved on");
+    assert_eq!(shown["refs"][1]["synced"], false, "a ref that never synced says so");
+    let text = env.ok(&one, &["show", "lib"], 0);
+    assert!(text.contains(&format!("commit    {}", &first[..7])) && text.contains("(default branch)"), "{text}");
+
+    let store = env.json(&one, &["store"], 0);
+    let trees = store["repos"][0]["trees"].as_array().unwrap();
+    assert_eq!(trees.len(), 2, "one tree per commit in use");
+    let used = |sha: &str| trees.iter().find(|t| t["commit"]["sha"] == sha).unwrap()["used_by"][0]["id"].clone();
+    assert_eq!(used(&first), "lib");
+    assert_eq!(used(&latest), "library");
+    env.ok(&one, &["rm", "lib"], 0);
+    let store = env.json(&one, &["store"], 0);
+    let unused = store["repos"][0]["trees"].as_array().unwrap().iter().filter(|t| t["used_by"].as_array().unwrap().is_empty()).count();
+    assert_eq!(unused, 1, "gc's candidates are visible before running it");
+}
+
+#[test]
 fn add_creates_the_config_when_there_is_none() {
     let env = Env::new();
     let (_, url) = env.upstream("lib");

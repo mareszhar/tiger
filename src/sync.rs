@@ -306,6 +306,7 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
                         copy_mode: mode,
                         tags_digest,
                         synced_at: now_secs(),
+                        checked_at: now_secs(),
                     },
                 );
             }
@@ -314,6 +315,7 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
                 report.tracks = Some(tracks(old.kind, &old.name));
                 if let Some(st) = run.state.refs.get_mut(&job.entry.id) {
                     st.tags_digest = tags_digest;
+                    st.checked_at = now_secs();
                 }
             }
             JobOutcome::Failed(err) => {

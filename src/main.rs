@@ -16,6 +16,7 @@ mod releases;
 mod remote;
 mod schedule;
 mod settings;
+mod show;
 mod state;
 mod status;
 mod store;
@@ -37,6 +38,7 @@ Examples:
   tiger add ueberdosis/tiptap --note \"…\"   add a GitHub repo; it follows the default branch
   tiger add git@host:me/x.git --ref v2.1   add a private repo, pinned to a tag
   tiger sync                               fetch only what changed upstream
+  tiger show zod                           the commit, date, and subject zod's copy holds
   tiger sync --everywhere                  update every project on this machine
   tiger config set schedule 6h             do that in the background, every 6 hours
 
@@ -131,6 +133,14 @@ enum Command {
         #[arg(long)]
         offline: bool,
     },
+    /// Show what each ref's copy holds: commit, date, subject, size, other projects using it
+    Show {
+        /// Only these refs (default: all)
+        #[arg(value_name = "ID")]
+        ids: Vec<String>,
+    },
+    /// Show what the shared store holds and which projects use it
+    Store,
     /// Prune store data that no project uses
     Gc,
     /// Show or change global settings (dir, store, concurrency, schedule)
@@ -331,6 +341,24 @@ fn run(cli: Cli) -> Result<u8> {
                 print_json(&report);
             } else {
                 print!("{}", output::status(&report));
+            }
+            Ok(0)
+        }
+        Command::Show { ids } => {
+            let report = show::show(&start, &ids)?;
+            if json {
+                print_json(&report);
+            } else {
+                print!("{}", output::show(&report));
+            }
+            Ok(0)
+        }
+        Command::Store => {
+            let report = show::store()?;
+            if json {
+                print_json(&report);
+            } else {
+                print!("{}", output::store(&report));
             }
             Ok(0)
         }

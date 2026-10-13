@@ -25,7 +25,7 @@ Source of repos this project learns from lives in `__references__/`, managed by 
 
 ## Rules that are easy to miss
 
-- The reference docs are the contract. Change behavior and its doc in the same change.
+- The reference docs are the contract. Change behavior, its doc, and its `CHANGELOG.md` entry (under `## [Unreleased]`) in the same change.
 - Every promise gets an end-to-end test with a positive control ([evidence](./docs/maintainers/evidence.md)). Tests stay hermetic: never touch the real `HOME`, store, or service manager.
 - Never delete what tiger didn't create; never prompt; never leave half a copy. See the invariants.
 - Plans and progress live in ignored `__temp__/` records, never in tracked docs. Never delete anything in `__temp__/` or `__references__/` by hand.

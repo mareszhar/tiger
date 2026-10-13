@@ -47,7 +47,11 @@ pub struct RefState {
     /// Digest of the remote's tag list when release notes were last written.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tags_digest: Option<String>,
+    /// When the copy was last made.
     pub synced_at: u64,
+    /// When a sync last confirmed the copy matches upstream (or its pin).
+    #[serde(default)]
+    pub checked_at: u64,
 }
 
 impl RefState {

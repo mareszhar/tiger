@@ -1,9 +1,8 @@
 name: release
 
 # Pushing a tag like v0.1.0 (scripts/release.sh does) builds four binaries,
-# publishes a GitHub release with them, and updates the Homebrew formula in
-# mareszhar/homebrew-tap. Replace the generated notes with the changelog
-# afterwards: gh release edit v0.1.0 --notes-file __temp__/v010-changelog.md
+# publishes a GitHub release with them and the version's CHANGELOG.md section
+# as notes, and updates the Homebrew formula in mareszhar/homebrew-tap.
 # The tap update needs a HOMEBREW_TAP_TOKEN secret that can push to that repo.
 
 on:
@@ -36,6 +35,8 @@ jobs:
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != Cargo.toml v$version"; exit 1; }
+      - name: Check CHANGELOG.md has notes for this version
+        run: scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > /dev/null
       - run: cargo test --release
         if: matrix.target != 'x86_64-apple-darwin'
       - run: cargo build --release --target ${{ matrix.target }}
@@ -63,7 +64,9 @@ jobs:
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256 --title "tiger $GITHUB_REF_NAME" --generate-notes --verify-tag
+        run: |
+          scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256 --title "tiger $GITHUB_REF_NAME" --notes-file notes.md --verify-tag
       - name: Render the Homebrew formula
         run: packaging/homebrew/render.sh "${GITHUB_REF_NAME#v}" dist > tiger.rb
       - name: Push the formula to the tap
@@ -78,4 +81,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Formula/tiger.rb
           git commit -m "tiger $GITHUB_REF_NAME"
-          git push
+          git push origin HEAD

@@ -75,6 +75,8 @@ tiger add <url> [options]       add a ref and sync it
 tiger rm <id>…                  remove refs and their copies
 tiger sync [<id>…]              fetch only what changed  (--everywhere: every project)
 tiger status                    what each ref tracks, and whether it's behind
+tiger show [<id>…]              what each copy holds: commit, date, subject, size, other projects
+tiger store                     what the shared store holds, and which projects use it
 tiger pin <id> [<tag|sha>]      pin a ref  ·  tiger unpin <id>  follow the default branch again
 tiger gc                        prune what no project uses from the store
 tiger config [set <key> <v>]    global settings: dir, store, concurrency, schedule
@@ -95,6 +97,7 @@ Every command takes `--json`. Exit codes: `0` ok, `1` usage or config error, `2`
 | **[Getting started](./docs/guide/getting-started.md)** | Install, first refs, agents, every project at once, sandboxes, vendir |
 | **[Vision](./docs/vision.md)** · **[Language](./docs/language.md)** | Why tiger exists, how it thinks, the words it uses |
 | **[CLI reference](./docs/reference/cli.md)** · **[Configuration](./docs/reference/config.md)** | Exact contracts |
+| **[Changelog](./CHANGELOG.md)** · **[Status](./docs/status.md)** | What each release changed; what's deferred for now, and what would change that |
 
 ## License
 

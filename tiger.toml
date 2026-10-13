@@ -11,6 +11,7 @@
 #   tiger add <url> [--as <id>] [--ref <branch|tag|sha>] [--note "…"]
 #   tiger sync [<id>…]     fetch only what changed upstream
 #   tiger status           which refs are behind upstream
+#   tiger show [<id>…]     which commit each copy holds, and when
 #   tiger rm <id> · tiger pin <id> [<tag|sha>] · tiger unpin <id> · tiger help
 # ──────────────────────────────────────────────────────────────────────────────
 
