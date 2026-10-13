@@ -1,0 +1,81 @@
+name: release
+
+# Pushing a tag like v0.1.0 (scripts/release.sh does) builds four binaries,
+# publishes a GitHub release with them, and updates the Homebrew formula in
+# mareszhar/homebrew-tap. Replace the generated notes with the changelog
+# afterwards: gh release edit v0.1.0 --notes-file __temp__/v010-changelog.md
+# The tap update needs a HOMEBREW_TAP_TOKEN secret that can push to that repo.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Check the tag matches Cargo.toml
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != Cargo.toml v$version"; exit 1; }
+      - run: cargo test --release
+        if: matrix.target != 'x86_64-apple-darwin'
+      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          name="tiger-$GITHUB_REF_NAME-${{ matrix.target }}"
+          mkdir "$name"
+          cp "target/${{ matrix.target }}/release/tiger" README.md LICENSE "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: tiger-*.tar.gz*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256 --title "tiger $GITHUB_REF_NAME" --generate-notes --verify-tag
+      - name: Render the Homebrew formula
+        run: packaging/homebrew/render.sh "${GITHUB_REF_NAME#v}" dist > tiger.rb
+      - name: Push the formula to the tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone "https://x-access-token:$TAP_TOKEN@github.com/mareszhar/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp tiger.rb tap/Formula/tiger.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/tiger.rb
+          git commit -m "tiger $GITHUB_REF_NAME"
+          git push

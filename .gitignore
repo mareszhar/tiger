@@ -1,0 +1,9 @@
+# --- Build outputs ---
+/target/
+
+# --- References and temporary files ---
+__references__/
+__temp__/
+
+# --- Operating system files ---
+.DS_Store

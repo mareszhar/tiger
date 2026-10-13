@@ -1,0 +1,23 @@
+# ── tiger ─────────────────────────────────────────────────────────────────────
+# Read-only copies of other repos, kept so agents can read the source
+# instead of guessing. Each ref below is copied to __references__/<id>/.
+#
+# • __references__/ is gitignored, so project-wide searches skip it. To search a ref,
+#   pass its path: rg "pattern" __references__/<id>
+# • Never edit files under __references__/<id>/: every sync replaces them.
+# • Notes about a ref are plain comments directly above its entry.
+# • A ref with only a URL follows the repo's default branch.
+#
+#   tiger add <url> [--as <id>] [--ref <branch|tag|sha>] [--note "…"]
+#   tiger sync [<id>…]     fetch only what changed upstream
+#   tiger status           which refs are behind upstream
+#   tiger rm <id> · tiger pin <id> [<tag|sha>] · tiger unpin <id> · tiger help
+# ──────────────────────────────────────────────────────────────────────────────
+
+dir = "__references__"
+
+[refs]
+
+# Sibling project by the same author; its docs/ set the doc style tiger
+# follows (vision, language, maintainers).
+selenita = "https://github.com/mareszhar/selenita"
