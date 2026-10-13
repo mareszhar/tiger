@@ -77,4 +77,4 @@ trap - EXIT
 
 # Commit and tag go together, or neither does.
 git push --atomic --follow-tags || fail "the push failed; the commit and tag are local. Fix the cause, then run: git push --atomic --follow-tags"
-echo "pushed $tag; the release workflow publishes it. Follow it with: gh run watch"
+echo "pushed $tag; the release workflow publishes it: https://github.com/mareszhar/tiger/actions"
