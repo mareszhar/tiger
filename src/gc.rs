@@ -31,7 +31,7 @@ pub fn gc() -> Result<Collected> {
         let path = Store::shared_path(settings.store.as_deref())?;
         return Err(Error::new(format!("can't write the shared store at {}", path.display())).hint("run `tiger gc` outside the sandbox"));
     };
-    let _lock = store.lock_exclusive()?;
+    let _lock = store.lock_exclusive(&|| eprintln!("tiger: waiting for running syncs to finish"))?;
     let mut out = Collected { store: store.root.display().to_string(), bytes_before: size(&store.root), ..Collected::default() };
 
     // Commits in use, per store key, from every registered project's state.

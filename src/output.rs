@@ -39,7 +39,7 @@ fn ref_line(out: &mut String, report: &RefReport, width: usize) {
     }
 }
 
-fn project_lines(out: &mut String, project: &ProjectReport, quiet: bool, indent_unchanged: bool) -> bool {
+fn project_lines(out: &mut String, project: &ProjectReport, quiet: bool, indent_unchanged: bool, shared: bool) -> bool {
     if let Some(err) = &project.error {
         for (i, line) in err.to_string().lines().enumerate() {
             let _ = writeln!(out, "  {}{line}", if i == 0 { "! " } else { "  " });
@@ -64,6 +64,36 @@ fn project_lines(out: &mut String, project: &ProjectReport, quiet: bool, indent_
         let _ = writeln!(out, "  = unchanged  {unchanged} ref{}", if unchanged == 1 { "" } else { "s" });
         wrote = true;
     }
+    // Store details only when they say something: promotion, leftovers, or a missing registration.
+    if !quiet && shared {
+        let p = &project.promotion;
+        if p.promoted_trees > 0 {
+            let _ = writeln!(out, "  promoted {} from the fallback store to the shared store", plural(p.promoted_trees, "tree"));
+            wrote = true;
+        }
+        if p.remaining_trees > 0 || p.remaining_repos > 0 {
+            let _ = writeln!(
+                out,
+                "  the fallback store still holds {} and {}",
+                plural(p.remaining_trees, "tree"),
+                plural(p.remaining_repos, "repo")
+            );
+            wrote = true;
+        }
+        if !project.registered && project.error.is_none() {
+            let _ = writeln!(out, "  not registered in the shared store, so --everywhere won't update it");
+            wrote = true;
+        }
+    }
+    for failure in &project.promotion.failures {
+        let _ =
+            writeln!(out, "  ! promotion failed {} {}: {} · kept fallback data", failure.repo, short_sha(&failure.commit), failure.error);
+        wrote = true;
+    }
+    for warning in &project.promotion.cleanup_warnings {
+        let _ = writeln!(out, "  warning: {warning}");
+        wrote = true;
+    }
     wrote
 }
 
@@ -72,6 +102,10 @@ fn summary_line(outcome: &Outcome) -> String {
     let mut line = format!("synced {} · unchanged {} · failed {}", s.synced, s.unchanged, s.failed);
     if s.removed > 0 {
         line.push_str(&format!(" · removed {}", s.removed));
+    }
+    let promotion_failed: usize = outcome.projects.iter().map(|project| project.promotion.failures.len()).sum();
+    if promotion_failed > 0 {
+        line.push_str(&format!(" · promotion failed {promotion_failed}"));
     }
     if outcome.everywhere {
         line.push_str(&format!(" · {} project{}", outcome.projects.len(), if outcome.projects.len() == 1 { "" } else { "s" }));
@@ -82,16 +116,17 @@ fn summary_line(outcome: &Outcome) -> String {
 
 pub fn sync(outcome: &Outcome, quiet: bool) -> String {
     let mut out = String::new();
+    let shared = matches!(outcome.store.mode, crate::store::StoreMode::Shared);
     if outcome.everywhere {
         for project in &outcome.projects {
             let mut body = String::new();
-            if project_lines(&mut body, project, quiet, false) {
+            if project_lines(&mut body, project, quiet, false, shared) {
                 let _ = writeln!(out, "{}", display_path(Path::new(&project.project)));
                 out.push_str(&body);
             }
         }
     } else if let Some(project) = outcome.projects.first() {
-        project_lines(&mut out, project, quiet, true);
+        project_lines(&mut out, project, quiet, true, shared);
     }
     if !quiet {
         out.push_str(&summary_line(outcome));
@@ -103,7 +138,7 @@ pub fn sync(outcome: &Outcome, quiet: bool) -> String {
 pub fn status(report: &status::Report) -> String {
     let mut out = String::new();
     if report.refs.is_empty() {
-        out.push_str("no refs yet; add one with `tiger add <url>`\n");
+        let _ = writeln!(out, "no refs yet; add one with `tiger --cwd {} add <url>`", crate::util::shell_quote(&report.project));
         return out;
     }
     let id_w = report.refs.iter().map(|r| r.id.len()).max().unwrap_or(0);
@@ -139,6 +174,10 @@ pub fn bytes(n: u64) -> String {
     if unit == 0 { format!("{n} B") } else { format!("{value:.1} {}", UNITS[unit]) }
 }
 
+fn plural(n: usize, word: &str) -> String {
+    format!("{n} {word}{}", if n == 1 { "" } else { "s" })
+}
+
 fn thousands(n: u64) -> String {
     let digits = n.to_string();
     let mut out = String::new();
@@ -166,11 +205,37 @@ fn commit_line(c: &crate::show::CommitInfo) -> String {
     line
 }
 
+/// One line on where this project's data lives, and whether sharing works.
+fn store_summary(store: &crate::show::StoreFacts) -> String {
+    use crate::store::StoreMode;
+    let shared = store.configured_shared.as_deref().map(|p| display_path(Path::new(p))).unwrap_or_else(|| "the shared store".into());
+    if store.last_sync.as_ref().is_some_and(|last| matches!(last.mode, StoreMode::Fallback)) {
+        return format!(
+            "store: the last sync couldn't write {shared}, so its data is in the fallback store ({}); the next sync that can write {shared} promotes it",
+            plural(store.fallback_trees, "tree")
+        );
+    }
+    let mut line = match store.registered {
+        Some(true) => format!("store: {shared} · registered"),
+        Some(false) => format!("store: {shared} · not registered yet; the next sync registers this project"),
+        None => format!("store: {shared} · registration unknown"),
+    };
+    if store.fallback_trees > 0 {
+        line.push_str(&format!(" · the fallback store still holds {}", plural(store.fallback_trees, "tree")));
+    }
+    if let Some(error) = &store.registration_error {
+        line.push_str(&format!(" ({error})"));
+    }
+    line
+}
+
 pub fn show(report: &crate::show::ShowReport) -> String {
     use crate::remote::Kind;
     let mut out = String::new();
+    let command = &report.invocation;
+    let _ = writeln!(out, "{}\n", store_summary(&report.store));
     if report.refs.is_empty() {
-        out.push_str("no refs yet; add one with `tiger add <url>`\n");
+        let _ = writeln!(out, "no refs yet; add one with `{command} add <url>`");
         return out;
     }
     for (i, r) in report.refs.iter().enumerate() {
@@ -178,8 +243,13 @@ pub fn show(report: &crate::show::ShowReport) -> String {
             out.push('\n');
         }
         let _ = writeln!(out, "{}  {}", r.id, r.url);
+        if let Some(note) = &r.note {
+            for (i, line) in note.lines().enumerate() {
+                let _ = writeln!(out, "  {}{line}", if i == 0 { "note      " } else { "          " });
+            }
+        }
         if !r.synced {
-            let _ = writeln!(out, "  not synced yet: run `tiger sync {}`", r.id);
+            let _ = writeln!(out, "  not synced yet: run `{command} sync {}`", r.id);
             continue;
         }
         let tracks = r.tracks.as_deref().unwrap_or("");
@@ -227,7 +297,7 @@ pub fn show(report: &crate::show::ShowReport) -> String {
             let _ = writeln!(out, "  also in   {}", list.join(" · "));
         }
         if r.config_changed {
-            let _ = writeln!(out, "  config changed since this sync: `tiger sync {}` rebuilds it", r.id);
+            let _ = writeln!(out, "  config changed since this sync: `{command} sync {}` rebuilds it", r.id);
         }
     }
     out

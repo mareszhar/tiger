@@ -58,23 +58,58 @@ fn refs_table(doc: &mut DocumentMut) -> Result<&mut dyn toml_edit::TableLike> {
 /// `# note` lines wrapped at 78 columns, with a blank line before the entry.
 fn comment_prefix(note: Option<&str>) -> String {
     let mut prefix = String::from("\n");
-    if let Some(note) = note.map(str::trim).filter(|n| !n.is_empty()) {
-        for paragraph in note.lines() {
-            let mut line = String::from("#");
-            for word in paragraph.split_whitespace() {
-                if line.len() + 1 + word.len() > 78 && line.len() > 1 {
-                    prefix.push_str(&line);
-                    prefix.push('\n');
-                    line = String::from("#");
+    if let Some(note) = note.map(|n| n.trim_matches(['\n', '\r'])).filter(|n| !n.trim().is_empty()) {
+        let mut paragraph = Vec::new();
+        for line in note.lines() {
+            let trimmed = line.trim_start();
+            let list = trimmed.starts_with("- ")
+                || trimmed.starts_with("* ")
+                || trimmed.starts_with("+ ")
+                || trimmed.split_once(". ").is_some_and(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
+            if line.trim().is_empty() || list || line.starts_with(char::is_whitespace) {
+                if !paragraph.is_empty() {
+                    wrap_comment(&mut prefix, &paragraph.join(" "), "");
+                    paragraph.clear();
                 }
-                line.push(' ');
-                line.push_str(word);
+                if line.trim().is_empty() {
+                    prefix.push_str("#\n");
+                } else {
+                    let indent = &line[..line.len() - trimmed.len()];
+                    wrap_comment(&mut prefix, trimmed, indent);
+                }
+            } else {
+                paragraph.push(line.trim());
             }
-            prefix.push_str(&line);
-            prefix.push('\n');
+        }
+        if !paragraph.is_empty() {
+            wrap_comment(&mut prefix, &paragraph.join(" "), "");
         }
     }
     prefix
+}
+
+fn wrap_comment(out: &mut String, text: &str, indent: &str) {
+    let marker = text.split_once(' ').map(|(first, _)| first).unwrap_or("");
+    let list = matches!(marker, "-" | "*" | "+")
+        || marker.strip_suffix('.').is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
+    let continuation = format!("{indent}{}", if list { " ".repeat(marker.len() + 1) } else { String::new() });
+    let mut line = format!("# {indent}");
+    let mut has_word = false;
+    for word in text.split_whitespace() {
+        if has_word && line.chars().count() + 1 + word.chars().count() > 78 {
+            out.push_str(&line);
+            out.push('\n');
+            line = format!("# {continuation}");
+            has_word = false;
+        }
+        if has_word {
+            line.push(' ');
+        }
+        line.push_str(word);
+        has_word = true;
+    }
+    out.push_str(&line);
+    out.push('\n');
 }
 
 fn string_array(items: &[String]) -> Value {
@@ -118,17 +153,15 @@ pub fn add(doc: &mut DocumentMut, new: &NewRef) -> Result<()> {
     if let Some(propagate) = new.propagate {
         table.insert("propagate", value(propagate));
     }
-    table.decor_mut().set_prefix(prefix);
-    match doc.get_mut("refs") {
-        Some(Item::Table(refs)) => {
-            refs.insert(&new.id, Item::Table(table));
-        }
-        _ => {
-            let refs = refs_table(doc)?;
-            let mut inline = table.into_inline_table();
-            inline.fmt();
-            refs.insert(&new.id, Item::Value(Value::InlineTable(inline)));
-        }
+    let mut inline = table.into_inline_table();
+    inline.fmt();
+    let refs = refs_table(doc)?;
+    refs.insert(&new.id, Item::Value(Value::InlineTable(inline)));
+    if let Some(mut key) = refs.key_mut(&new.id) {
+        key.leaf_decor_mut().set_prefix(prefix);
+    }
+    if let Some(table) = doc.get_mut("refs").and_then(Item::as_table_mut) {
+        table.set_implicit(false);
     }
     Ok(())
 }
@@ -187,6 +220,37 @@ pub fn set_ref(doc: &mut DocumentMut, id: &str, git_ref: Option<&str>) -> Result
     Ok(())
 }
 
+/// The note above each ref: the comment lines directly above its entry, up
+/// to the nearest blank line, so a heading over a group of refs isn't
+/// mistaken for one ref's note.
+pub fn notes(text: &str) -> std::collections::HashMap<String, String> {
+    let mut notes = std::collections::HashMap::new();
+    let Ok(doc) = text.parse::<DocumentMut>() else { return notes };
+    let Some(refs) = doc.get("refs").and_then(Item::as_table) else { return notes };
+    for (id, item) in refs.iter() {
+        let prefix = match item {
+            Item::Table(table) => table.decor().prefix(),
+            _ => refs.key(id).and_then(|key| key.leaf_decor().prefix()),
+        };
+        if let Some(note) = prefix.and_then(|p| p.as_str()).and_then(note_from_prefix) {
+            notes.insert(id.to_string(), note);
+        }
+    }
+    notes
+}
+
+fn note_from_prefix(prefix: &str) -> Option<String> {
+    let lines: Vec<&str> = prefix.lines().map(str::trim).collect();
+    let start = lines.iter().rposition(|l| l.is_empty()).map_or(0, |i| i + 1);
+    let block = &lines[start..];
+    if block.is_empty() || !block.iter().all(|l| l.starts_with('#')) {
+        return None;
+    }
+    let text: Vec<&str> = block.iter().map(|l| l.trim_start_matches('#').strip_prefix(' ').unwrap_or(l.trim_start_matches('#'))).collect();
+    let note = text.join("\n").trim().to_string();
+    (!note.is_empty()).then_some(note)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,7 +279,7 @@ mod tests {
         let text = doc.to_string();
         assert!(text.starts_with(DOC.trim_end()), "{text}");
         assert!(text.contains("\n# ProseMirror model.\npm = \"https://x/pm\"\n"), "{text}");
-        assert!(text.contains("\n# Only the source.\n[refs.big]\nurl = \"https://x/big\"\ninclude = [\"src/**\"]\n"), "{text}");
+        assert!(text.contains("\n# Only the source.\nbig = { url = \"https://x/big\", include = [\"src/**\"] }\n"), "{text}");
         let config = config::parse(&text).unwrap();
         assert_eq!(config.refs.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["tiptap", "zod", "pm", "big"]);
     }
@@ -240,6 +304,15 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("# Pinned for now.\nzod = \"https://github.com/colinhacks/zod\"\n"), "{text}");
+    }
+
+    #[test]
+    fn reads_the_note_directly_above_each_entry() {
+        let text = "[refs]\n# ── frameworks ──\n\n# Editor framework.\n# Read the extension API.\ntiptap = \"https://x/tiptap\"\nbare = \"https://x/bare\"\n\n# Only the source.\n[refs.big]\nurl = \"https://x/big\"\n";
+        let notes = notes(text);
+        assert_eq!(notes["tiptap"], "Editor framework.\nRead the extension API.");
+        assert_eq!(notes["big"], "Only the source.");
+        assert!(!notes.contains_key("bare"));
     }
 
     #[test]

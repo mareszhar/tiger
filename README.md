@@ -33,7 +33,7 @@ synced 2 · unchanged 59 · failed 0 · 12 projects · 4.1s
 
 ## The config
 
-`tiger.toml` is committed with your project. The refs folder (`tiger/` by default) is gitignored.
+`tiger.toml` lists your refs. Commit it to share that list, or keep it locally. `tiger init` ignores the refs folder (`tiger/` by default); `--no-gitignore` leaves ignore rules to you.
 
 ```toml
 [refs]
@@ -67,6 +67,8 @@ tiger add <url|owner/repo> --note "what it is and why it's here"
 
 `tiger init` prints a line for your `AGENTS.md` or `CLAUDE.md`, so agents know the refs are there. The [getting started guide](./docs/guide/getting-started.md) covers the rest, including sandboxes and moving from vendir.
 
+Prefer the config and its copies in one folder? Run `tiger init --dir .` inside it. tiger then leaves your ignore files alone; the [guide](./docs/guide/getting-started.md#10-configs-beside-copies) shows how to keep that folder out of commits, and how several configs can share a repo.
+
 ## Commands
 
 ```text
@@ -82,7 +84,7 @@ tiger gc                        prune what no project uses from the store
 tiger config [set <key> <v>]    global settings: dir, store, concurrency, schedule
 ```
 
-Every command takes `--json`. Exit codes: `0` ok, `1` usage or config error, `2` some refs failed (the rest synced).
+Every command takes `--json`. Exit codes: `0` ok, `1` usage or config error, `2` part of a sync failed (the rest still synced).
 
 ## Good to know
 

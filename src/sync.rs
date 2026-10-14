@@ -13,7 +13,7 @@ use serde::Serialize;
 use crate::config::{self, Project, RefEntry};
 use crate::copy::{self, CopyMode, Filters};
 use crate::error::{Error, Result};
-use crate::git::GitError;
+use crate::git::{self, GitError};
 use crate::remote::{self, Kind, RemoteRefs, Resolved, Want};
 use crate::settings::{self, Settings};
 use crate::state::{self, RefState, State};
@@ -27,6 +27,7 @@ pub struct Options {
     pub ids: Vec<String>,
     pub everywhere: bool,
     pub force: bool,
+    pub quiet: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -86,6 +87,8 @@ pub struct ProjectReport {
     pub project: String,
     pub refs: Vec<RefReport>,
     pub summary: Summary,
+    pub promotion: crate::promotion::Report,
+    pub registered: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<Error>,
 }
@@ -94,6 +97,7 @@ pub struct ProjectReport {
 pub struct Outcome {
     pub projects: Vec<ProjectReport>,
     pub summary: Summary,
+    pub store: crate::store::StoreLocation,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
     #[serde(skip)]
@@ -102,7 +106,11 @@ pub struct Outcome {
 
 impl Outcome {
     pub fn has_failures(&self) -> bool {
-        self.summary.failed > 0 || self.projects.iter().any(|p| p.error.is_some() || p.refs.iter().any(|r| r.error.is_some()))
+        self.summary.failed > 0
+            || self
+                .projects
+                .iter()
+                .any(|p| p.error.is_some() || !p.promotion.failures.is_empty() || p.refs.iter().any(|r| r.error.is_some()))
     }
 }
 
@@ -114,6 +122,7 @@ struct Run {
     /// Whether refs removed from the config are deleted (not when syncing only some ids).
     prune: bool,
     state: State,
+    promotion: crate::promotion::Report,
     _lock: Option<std::fs::File>,
 }
 
@@ -137,6 +146,8 @@ enum JobOutcome {
 
 pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
     let started = Instant::now();
+    let progress = crate::progress::Progress::start(options.quiet);
+    let activity = &progress.activity;
     let settings = settings::load()?;
     let mut warnings = Vec::new();
 
@@ -152,7 +163,9 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
     }
 
     let store = open_store(&settings, current.as_ref(), options.everywhere, &mut warnings)?;
-    let _store_lock = store.lock_shared()?;
+    if !store.shared {
+        activity.message(&format!("the shared store isn't writable; using {}", display_path(&store.root)));
+    }
 
     let mut runs = Vec::new();
     let mut reports_by_root: BTreeMap<PathBuf, ProjectReport> = BTreeMap::new();
@@ -164,7 +177,15 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
 
     if let Some(project) = current {
         let entries = project.config.refs.iter().filter(|e| options.ids.is_empty() || options.ids.contains(&e.id)).cloned().collect();
-        runs.push(Run { project, is_current: true, entries, prune: options.ids.is_empty(), state: State::default(), _lock: None });
+        runs.push(Run {
+            project,
+            is_current: true,
+            entries,
+            prune: options.ids.is_empty(),
+            state: State::default(),
+            promotion: Default::default(),
+            _lock: None,
+        });
     }
     if options.everywhere {
         let registry = store.read_registry()?;
@@ -191,6 +212,7 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
                         entries,
                         prune: options.ids.is_empty(),
                         state: State::default(),
+                        promotion: Default::default(),
                         _lock: None,
                     });
                 }
@@ -201,6 +223,8 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
                             project: root.display().to_string(),
                             refs: Vec::new(),
                             summary: Summary { failed: 1, ..Summary::default() },
+                            promotion: Default::default(),
+                            registered: true,
                             error: Some(err),
                         },
                     );
@@ -210,11 +234,16 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
     }
 
     // Lock projects in path order so concurrent runs never deadlock.
+    activity.begin(runs.iter().map(|run| run.entries.len()).sum(), runs.len());
+    let sources: Vec<_> = runs.iter().map(|run| fallback_source(&store, &run.project)).collect();
+    let _store_locks = lock_stores(&store, &sources, activity)?;
+    activity.quietly("waiting for another tiger process to finish", 0);
     let mut order: Vec<usize> = (0..runs.len()).collect();
     order.sort_by(|a, b| runs[*a].project.root.cmp(&runs[*b].project.root));
     for i in order {
         let dir = runs[i].project.dir_path();
-        match state::lock(&dir).and_then(|lock| Ok((lock, state::load(&dir)?))) {
+        let wait = || activity.message(&format!("waiting for another tiger process to finish with {}", display_path(&dir)));
+        match state::lock(&dir, &wait).and_then(|lock| Ok((lock, state::load(&dir)?))) {
             Ok((lock, state)) => {
                 runs[i]._lock = Some(lock);
                 runs[i].state = state;
@@ -230,24 +259,38 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
                         project: root.display().to_string(),
                         refs: Vec::new(),
                         summary: Summary { failed: 1, ..Summary::default() },
+                        promotion: Default::default(),
+                        registered: store.shared,
                         error: Some(err),
                     },
                 );
             }
         }
+        activity.done();
     }
 
-    let mut jobs = plan(&runs, options.force);
-    resolve_all(&mut jobs, settings.concurrency(), options.force);
-    materialize_all(&mut jobs, &runs, &store, settings.concurrency());
+    if store.shared {
+        for (run, source) in runs.iter_mut().zip(&sources).filter(|(run, _)| run._lock.is_some()) {
+            if let Some(source) = source {
+                run.promotion = crate::promotion::import(source, &store, &run.state, &run.entries, activity);
+            }
+        }
+    }
+    let mut jobs = plan(&runs, &store, options.force);
+    resolve_all(&mut jobs, settings.concurrency(), options.force, activity);
+    materialize_all(&mut jobs, &runs, &store, settings.concurrency(), activity);
 
     // Release notes for every ref that asks for them and didn't fail.
+    activity.quietly("checking release notes", jobs.len());
     let release_results = parallel_map(&jobs, settings.concurrency(), |job| {
-        if !job.entry.releases || matches!(job.outcome, JobOutcome::Failed(_)) {
-            return None;
-        }
-        let dir = runs[job.run].project.dir_path();
-        Some(releases::refresh(&job.entry, &dir, job.old.as_ref().and_then(|o| o.tags_digest.as_deref())))
+        let result = if !job.entry.releases || matches!(job.outcome, JobOutcome::Failed(_)) {
+            None
+        } else {
+            let dir = runs[job.run].project.dir_path();
+            Some(releases::refresh(&job.entry, &dir, job.old.as_ref().and_then(|o| o.tags_digest.as_deref())))
+        };
+        activity.done();
+        result
     });
 
     let mut copy_warned = HashSet::new();
@@ -336,6 +379,7 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
     }
 
     // Removed refs, state files, pointers, registry.
+    activity.quietly("saving state", 0);
     let mut registered = Vec::new();
     for (i, run) in runs.iter_mut().enumerate() {
         let dir = run.project.dir_path();
@@ -370,13 +414,26 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
                 reports[i].push(report);
             }
         }
+        run.state.last_store = Some(store.location());
         if let Err(err) = state::save(&dir, &run.state).and_then(|_| pointer::write(&run.project)) {
             if run.is_current {
                 return Err(err);
             }
-            warnings.push(err.to_string());
+            reports_by_root.insert(
+                run.project.root.clone(),
+                ProjectReport {
+                    project: run.project.root.display().to_string(),
+                    refs: Vec::new(),
+                    summary: Summary { failed: 1, ..Default::default() },
+                    promotion: run.promotion.clone(),
+                    registered: false,
+                    error: Some(err),
+                },
+            );
+            continue;
         }
         registered.push(run.project.root.clone());
+        activity.done();
     }
     if store.shared {
         let now = now_secs();
@@ -393,6 +450,15 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
     for root in &missing {
         warnings.push(format!("forgot {}: it no longer has a {}", display_path(root), config::FILE));
     }
+    activity.quietly("cleaning up the fallback store", 0);
+    for (run, source) in runs.iter_mut().zip(&sources) {
+        if registered.contains(&run.project.root)
+            && let Some(source) = source
+        {
+            crate::promotion::cleanup(source, &run.state, &run.entries, run.prune, &mut run.promotion);
+        }
+        activity.done();
+    }
 
     let ms = started.elapsed().as_millis();
     let mut total = Summary { ms, ..Summary::default() };
@@ -408,13 +474,53 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
             summary.add(report);
             total.add(report);
         }
-        projects.push(ProjectReport { project: run.project.root.display().to_string(), refs, summary, error: None });
+        projects.push(ProjectReport {
+            project: run.project.root.display().to_string(),
+            refs,
+            summary,
+            promotion: run.promotion.clone(),
+            registered: store.shared && registered.contains(&run.project.root),
+            error: None,
+        });
     }
     for (_, report) in reports_by_root {
         total.failed += report.summary.failed;
         projects.push(report);
     }
-    Ok(Outcome { projects, summary: total, warnings, everywhere: options.everywhere })
+    Ok(Outcome { projects, summary: total, store: store.location(), warnings, everywhere: options.everywhere })
+}
+
+fn fallback_source(destination: &Store, project: &Project) -> Option<Store> {
+    if !destination.shared {
+        return None;
+    }
+    let root = project.dir_path().join(crate::store::FALLBACK_DIR).canonicalize().ok()?;
+    if !root.is_dir() || same_path(&root, &destination.root) {
+        return None;
+    }
+    Some(Store { root, shared: false })
+}
+
+fn lock_stores(destination: &Store, sources: &[Option<Store>], activity: &crate::progress::Activity) -> Result<Vec<std::fs::File>> {
+    let mut stores = BTreeMap::new();
+    let root = destination.root.canonicalize().unwrap_or_else(|_| destination.root.clone());
+    stores.insert(root, true);
+    for source in sources.iter().flatten() {
+        stores.insert(source.root.clone(), false);
+    }
+    activity.quietly("waiting for another tiger process to finish", 0);
+    let mut locks = Vec::new();
+    for (root, shared) in stores {
+        let store = Store { root, shared };
+        let wait = || activity.message("waiting for another tiger process to finish with the store");
+        locks.push(if shared { store.lock_shared(&wait)? } else { store.lock_exclusive(&wait)? });
+        activity.done();
+    }
+    Ok(locks)
+}
+
+fn plural(n: usize, word: &str) -> String {
+    format!("{n} {word}{}", if n == 1 { "" } else { "s" })
 }
 
 fn no_config(start: &Path) -> Error {
@@ -422,7 +528,7 @@ fn no_config(start: &Path) -> Error {
         .hint("run `tiger init` in the project root, or pass --cwd <project>")
 }
 
-fn check_ids(project: &Project, ids: &[String]) -> Result<()> {
+pub fn check_ids(project: &Project, ids: &[String]) -> Result<()> {
     for id in ids {
         if !project.config.refs.iter().any(|e| &e.id == id) {
             let known: Vec<&str> = project.config.refs.iter().map(|e| e.id.as_str()).collect();
@@ -473,7 +579,13 @@ pub fn tracks(kind: Kind, name: &str) -> String {
 }
 
 /// Decides, without the network, which refs are already done.
-fn plan(runs: &[Run], force: bool) -> Vec<Job> {
+/// Whether a tag pin's recorded commit is really the tag object's own ID,
+/// as tiger 0.1 could record for annotated tags. Such a ref is resolved again.
+fn records_tag_object(store: &Store, old: &RefState) -> bool {
+    old.kind == Kind::Tag && git::peel(&store.repo_path(&store_key(&old.url)), &old.commit).is_some_and(|commit| commit != old.commit)
+}
+
+fn plan(runs: &[Run], store: &Store, force: bool) -> Vec<Job> {
     let mut jobs = Vec::new();
     for (i, run) in runs.iter().enumerate() {
         let dir = run.project.dir_path();
@@ -484,10 +596,13 @@ fn plan(runs: &[Run], force: bool) -> Vec<Job> {
             let mut job = Job { run: i, entry: entry.clone(), old, dest, folder_exists, outcome: JobOutcome::Pending };
             if job.old.is_none() && std::fs::symlink_metadata(&job.dest).is_ok() {
                 job.outcome = JobOutcome::Failed(format!(
-                    "{}/{} already exists and tiger didn't create it; move it, or give this ref another id",
+                    "{}/{} already exists and tiger didn't create it; if it's an old copy of this ref, delete it and sync again, otherwise move it or give this ref another id",
                     run.project.config.dir, entry.id
                 ));
-            } else if !force && job.folder_exists && job.old.as_ref().is_some_and(|o| o.matches(entry) && o.kind.is_pin()) {
+            } else if !force
+                && job.folder_exists
+                && job.old.as_ref().is_some_and(|o| o.matches(entry) && o.kind.is_pin() && !records_tag_object(store, o))
+            {
                 // A synced tag or commit pin needs no network.
                 job.outcome = JobOutcome::Unchanged;
             } else if let Want::Commit(sha) = Want::parse(entry.git_ref.as_deref()) {
@@ -500,13 +615,19 @@ fn plan(runs: &[Run], force: bool) -> Vec<Job> {
 }
 
 /// One `ls-remote` per URL, with every pattern its refs need.
-fn resolve_all(jobs: &mut [Job], concurrency: usize, force: bool) {
+fn resolve_all(jobs: &mut [Job], concurrency: usize, force: bool, activity: &crate::progress::Activity) {
     let mut patterns: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for job in jobs.iter().filter(|j| matches!(j.outcome, JobOutcome::Pending)) {
         patterns.entry(job.entry.url.clone()).or_default().extend(Want::parse(job.entry.git_ref.as_deref()).patterns());
     }
     let urls: Vec<(String, BTreeSet<String>)> = patterns.into_iter().collect();
-    let answers = parallel_map(&urls, concurrency, |(url, patterns)| remote::ls_remote(url, patterns));
+    activity.step("checking repos upstream", urls.len(), &format!("checking {} upstream", plural(urls.len(), "repo")));
+    let answers = parallel_map(&urls, concurrency, |(url, patterns)| {
+        let answer =
+            remote::ls_remote_with_retry(url, patterns, || activity.message(&format!("{} didn't answer; retrying", store_key(url))));
+        activity.done();
+        answer
+    });
     let answers: HashMap<&str, &std::result::Result<RemoteRefs, GitError>> =
         urls.iter().map(|(u, _)| u.as_str()).zip(answers.iter()).collect();
     for job in jobs.iter_mut().filter(|j| matches!(j.outcome, JobOutcome::Pending)) {
@@ -533,7 +654,7 @@ fn resolve_all(jobs: &mut [Job], concurrency: usize, force: bool) {
 }
 
 /// Fetches each needed commit once, then builds every changed copy.
-fn materialize_all(jobs: &mut [Job], runs: &[Run], store: &Store, concurrency: usize) {
+fn materialize_all(jobs: &mut [Job], runs: &[Run], store: &Store, concurrency: usize, activity: &crate::progress::Activity) {
     let mut trees: BTreeMap<(String, String), (String, Option<String>)> = BTreeMap::new();
     for job in jobs.iter() {
         if let JobOutcome::Resolved(r) = &job.outcome
@@ -543,27 +664,35 @@ fn materialize_all(jobs: &mut [Job], runs: &[Run], store: &Store, concurrency: u
         }
     }
     let wanted: Vec<_> = trees.into_iter().collect();
-    let fetched =
-        parallel_map(&wanted, concurrency, |((key, sha), (url, fetch_ref))| store.ensure_tree(url, key, fetch_ref.as_deref(), sha));
+    activity.step("fetching commits", wanted.len(), &format!("fetching {}", plural(wanted.len(), "commit")));
+    let fetched = parallel_map(&wanted, concurrency, |((key, sha), (url, fetch_ref))| {
+        let result = store.ensure_tree(url, key, fetch_ref.as_deref(), sha);
+        activity.done();
+        result
+    });
     let fetched: HashMap<(String, String), std::result::Result<(String, PathBuf), String>> =
         wanted.into_iter().map(|(k, _)| k).zip(fetched).collect();
 
     let indices: Vec<usize> = (0..jobs.len()).filter(|i| matches!(jobs[*i].outcome, JobOutcome::Resolved(_))).collect();
+    activity.quietly("copying refs", indices.len());
     let results = {
         let jobs: &[Job] = jobs;
         parallel_map(&indices, concurrency, |i| {
             let job = &jobs[*i];
             let JobOutcome::Resolved(resolved) = &job.outcome else { unreachable!() };
             let dir = runs[job.run].project.dir_path();
-            if job.entry.history {
-                return history::sync(&job.entry, resolved, &dir).map(|commit| (Resolved { commit, ..resolved.clone() }, CopyMode::Git));
-            }
-            match &fetched[&(store_key(&job.entry.url), resolved.commit.clone())] {
-                Err(err) => Err(err.clone()),
-                Ok((commit, tree)) => {
-                    build_copy(tree, &dir, &job.entry).map(|mode| (Resolved { commit: commit.clone(), ..resolved.clone() }, mode))
+            let result = if job.entry.history {
+                history::sync(&job.entry, resolved, &dir).map(|commit| (Resolved { commit, ..resolved.clone() }, CopyMode::Git))
+            } else {
+                match &fetched[&(store_key(&job.entry.url), resolved.commit.clone())] {
+                    Err(err) => Err(err.clone()),
+                    Ok((commit, tree)) => {
+                        build_copy(tree, &dir, &job.entry).map(|mode| (Resolved { commit: commit.clone(), ..resolved.clone() }, mode))
+                    }
                 }
-            }
+            };
+            activity.done();
+            result
         })
     };
     for (i, result) in indices.into_iter().zip(results) {

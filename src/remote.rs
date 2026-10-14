@@ -39,8 +39,10 @@ impl Want {
         match self {
             Want::DefaultBranch => vec!["HEAD".into()],
             Want::Branch(b) => vec![format!("refs/heads/{b}")],
-            Want::Tag(t) => vec![format!("refs/tags/{t}")],
-            Want::Name(n) => vec![format!("refs/heads/{n}"), format!("refs/tags/{n}")],
+            // `ls-remote` lists the `^{}` line (the commit an annotated tag
+            // points at) only when a pattern asks for it by name.
+            Want::Tag(t) => vec![format!("refs/tags/{t}"), format!("refs/tags/{t}^{{}}")],
+            Want::Name(n) => vec![format!("refs/heads/{n}"), format!("refs/tags/{n}"), format!("refs/tags/{n}^{{}}")],
             Want::Commit(_) => vec![],
         }
     }
@@ -91,11 +93,18 @@ pub struct RemoteRefs {
 }
 
 pub fn ls_remote(url: &str, patterns: &BTreeSet<String>) -> Result<RemoteRefs, GitError> {
+    ls_remote_with_retry(url, patterns, || {})
+}
+
+pub fn ls_remote_with_retry(url: &str, patterns: &BTreeSet<String>, retry: impl Fn()) -> Result<RemoteRefs, GitError> {
     let mut args = vec!["ls-remote", "--symref", url];
     args.extend(patterns.iter().map(String::as_str));
     // A stalled connection usually succeeds at once on a fresh one.
     let out = match git::run(None, &args) {
-        Err(err) if err.0.starts_with(git::TIMED_OUT) => git::run(None, &args)?,
+        Err(err) if err.0.starts_with(git::TIMED_OUT) => {
+            retry();
+            git::run(None, &args)?
+        }
         other => other?,
     };
     Ok(parse_ls_remote(&out))

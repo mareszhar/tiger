@@ -39,7 +39,7 @@ Everything in tiger is one of four things:
   project config            store (one per machine)          refs folder (one per project)
   ──────────────            ───────────────────────          ─────────────────────────────
   tiger.toml           ──▶  ~/.tiger                    ──▶  tiger/
-  committed intent:         disposable cache:                disposable output, gitignored:
+  your intent:              disposable cache:                disposable output:
   one entry per ref,          repos/  shallow bare clones      <id>/   real files, read-only
   notes as comments           trees/  one tree per commit      TIGER.md  the pointer for agents
                               registry.json  projects          .tiger-state.json
@@ -66,7 +66,7 @@ zod = { url = "https://github.com/colinhacks/zod", ref = "v3.4.2" }
 
 Every change to tiger answers to these. None outranks the guiding question; together they make it operational.
 
-1. **The project config is the source of truth.** `tiger.toml` is committed, records intent, and carries the notes about each ref as plain comments. There is no separate index to drift: the commented config is the index.
+1. **The project config is the source of truth.** `tiger.toml` records intent and carries the notes about each ref as plain comments. Commit it to share that intent, or keep it locally. There is no separate index to drift: the commented config is the index.
 
 2. **The config is data, never code.** TOML, not a script. Syncing another project's refs never runs that project's code, and tiger can edit the file without losing a comment.
 
@@ -110,6 +110,8 @@ The store's registry records which projects use tiger. `tiger sync --everywhere`
 
 Copies live inside the project, so an agent reads them without any permission to read outside the repo. Writing is another matter: an agent sandbox that forbids writing outside the project also forbids writing to `~/.tiger`. When the store isn't writable, tiger falls back to a store inside the refs folder (`.tiger-store/`) and says so. Nothing is shared in that mode, but everything works. To share the store with sandboxed agents, allow writes to `~/.tiger`; cross-project refreshes are best left to your own terminal or the scheduled job.
 
+Once the shared store is writable again, the next sync moves the fallback store's data into it, leaving your copies as they are, and then cleans up the fallback store. Anything that fails to move stays where it was for the next sync to retry.
+
 ### Versions, pins, history, releases
 
 - **A ref without `ref` follows the remote's default branch**, whatever it is named.
@@ -120,7 +122,7 @@ Copies live inside the project, so an agent reads them without any permission to
 
 ### Private repos
 
-Cloning goes through git's own auth: SSH keys, a credential helper, or a URL rewrite, all from the global git config (a project's local git config never applies, so a ref behaves the same everywhere). tiger never stores or handles credentials for cloning, and it never prompts: a ref that needs a password fails with git's message, and the rest sync. A collaborator or cloud agent without access sees that ref fail while everything else syncs. `tiger init` gitignores the refs folder so private code stays out of commits; whether to keep it ignored is each project's call.
+Cloning goes through git's own auth: SSH keys, a credential helper, or a URL rewrite, all from the global git config (a project's local git config never applies, so a ref behaves the same everywhere). tiger never stores or handles credentials for cloning, and it never prompts: a ref that needs a password fails with git's message, and the rest sync. A collaborator or cloud agent without access sees that ref fail while everything else syncs. Ordinary `tiger init` adds an ignore rule for the refs folder; `--no-gitignore` and `dir = "."` leave ignore files alone. Whether to commit any output is each project's choice.
 
 ## 5. Scope
 

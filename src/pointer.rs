@@ -7,16 +7,29 @@ pub const FILE_NAME: &str = "TIGER.md";
 
 pub fn contents(project: &Project) -> String {
     let dir = &project.config.dir;
-    let up = "../".repeat(dir.split('/').count());
+    let title = if dir == "." { "Refs".to_string() } else { format!("{dir}/") };
+    let base = project.dir_path();
+    let config = crate::util::relative_path(&base, &project.config_path())
+        .display()
+        .to_string()
+        .replace(' ', "%20")
+        .replace('(', "%28")
+        .replace(')', "%29");
+    let search = if dir == "." { "<id>".to_string() } else { format!("{}/<id>", crate::util::shell_quote(dir)) };
+    let sync = project.command_from(&base, "sync");
+    let status = project.command_from(&base, "status");
+    let show = project.command_from(&base, "show <id>");
+    let add = project.command_from(&base, "add <url>");
+    let rm = project.command_from(&base, "rm <id>");
     format!(
-        "# {dir}/\n\
+        "# {title}\n\
          \n\
-         Read-only copies of other repos, managed by [tiger](https://github.com/mareszhar/tiger) and listed in [`{FILE}`]({up}{FILE}), with notes about each as comments above its entry.\n\
+         Read-only copies of other repos, managed by [tiger](https://github.com/mareszhar/tiger) and listed in [`{FILE}`]({config}), with notes about each as comments above its entry.\n\
          \n\
-         - **Read and search freely.** Each folder is one ref: `rg \"pattern\" {dir}/<id>`.\n\
+         - **Read and search freely.** Each folder is one ref; search one by passing its path, like `rg \"pattern\" {search}` from the folder with `{FILE}`.\n\
          - **Don't edit files in ref folders.** They are read-only, and every sync replaces them.\n\
-         - **Refresh with `tiger sync`;** `tiger status` shows which refs are behind upstream, and `tiger show <id>` which commit a copy holds.\n\
-         - **Add or remove refs with `tiger add <url>` and `tiger rm <id>`,** or by editing `{FILE}`.\n\
+         - **Refresh with `{sync}`;** `{status}` shows which refs are behind upstream, and `{show}` which commit a copy holds.\n\
+         - **Add or remove refs with `{add}` and `{rm}`,** or by editing the linked config.\n\
          - Files here that aren't ref folders are left alone by tiger.\n"
     )
 }

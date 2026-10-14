@@ -38,6 +38,9 @@ pub struct Elsewhere {
 pub struct RefDetails {
     pub id: String,
     pub url: String,
+    /// The comment directly above the entry in `tiger.toml`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
     /// The `ref` field as configured; absent follows the default branch.
     #[serde(rename = "ref")]
     pub git_ref: Option<String>,
@@ -78,7 +81,23 @@ pub struct RefDetails {
 #[derive(Debug, Clone, Serialize)]
 pub struct ShowReport {
     pub project: String,
+    /// How to run tiger for this project from the shell's folder, for hints.
+    #[serde(skip)]
+    pub invocation: String,
     pub refs: Vec<RefDetails>,
+    pub store: StoreFacts,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StoreFacts {
+    pub configured_shared: Option<String>,
+    pub last_sync: Option<crate::store::StoreLocation>,
+    pub registered: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registration_error: Option<String>,
+    pub fallback_path: String,
+    pub fallback_trees: usize,
+    pub fallback_repos: usize,
 }
 
 pub fn show(start: &Path, ids: &[String]) -> Result<ShowReport> {
@@ -109,8 +128,26 @@ pub fn show(start: &Path, ids: &[String]) -> Result<ShowReport> {
         .iter()
         .filter(|e| ids.is_empty() || ids.contains(&e.id))
         .map(|entry| details(&project, entry, st.refs.get(&entry.id), shared.as_deref(), &others))
-        .collect();
-    Ok(ShowReport { project: root.display().to_string(), refs })
+        .collect::<Vec<RefDetails>>();
+    let notes = std::fs::read_to_string(project.config_path()).map(|text| crate::edit::notes(&text)).unwrap_or_default();
+    let refs = refs.into_iter().map(|d| RefDetails { note: notes.get(&d.id).cloned(), ..d }).collect();
+    let registry = shared.as_ref().map(|path| Store { root: path.clone(), shared: true }.read_registry());
+    let registered = registry
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .map(|registry| registry.projects.contains_key(&root.display().to_string()));
+    let registration_error = registry.and_then(|result| result.err()).map(|error| error.to_string());
+    let fallback = dir.join(FALLBACK_DIR);
+    let store = StoreFacts {
+        configured_shared: shared.map(|path| path.display().to_string()),
+        last_sync: st.last_store,
+        registered,
+        registration_error,
+        fallback_path: fallback.display().to_string(),
+        fallback_trees: crate::gc::sha_dirs(&fallback.join("trees")).len(),
+        fallback_repos: crate::gc::repo_dirs(&fallback.join("repos")).len(),
+    };
+    Ok(ShowReport { project: root.display().to_string(), invocation: project.invocation(), refs, store })
 }
 
 fn details(
@@ -127,6 +164,7 @@ fn details(
     let mut d = RefDetails {
         id: entry.id.clone(),
         url: entry.url.clone(),
+        note: None,
         git_ref: entry.git_ref.clone(),
         synced,
         kind: None,

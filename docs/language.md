@@ -15,8 +15,8 @@ project ──has──▶ tiger.toml ──lists──▶ refs (id → url, ref
 
 | Term | Meaning | Not to be confused with |
 | --- | --- | --- |
-| **project** | A folder with a `tiger.toml`, usually a git repository's root. | The repos it copies. |
-| **config** | `tiger.toml`: the committed list of refs, with notes as comments. The source of truth. | **Settings**, which are global. |
+| **project** | A folder with a `tiger.toml`. | The repos it copies. |
+| **config** | `tiger.toml`: the list of refs, with notes as comments. The source of truth. | **Settings**, which are global. |
 | **settings** | Machine-wide preferences in `~/.config/tiger/config.toml`, changed with `tiger config`. | The project config. |
 | **ref** | One entry in the config: a repo to copy, and what to copy from it. | A git ref. When git's meaning is needed, say **branch**, **tag**, or **refname**. |
 | **id** | A ref's key in the config, and its folder name. Belongs to the project: two projects may name one repo differently. | The repo's name, which is only the default id. |
@@ -24,7 +24,7 @@ project ──has──▶ tiger.toml ──lists──▶ refs (id → url, ref
 | **default branch** | The branch the remote's `HEAD` points at, whatever it is named. | `main`. |
 | **follow** | Track a branch: each sync moves the copy to the branch's latest commit. | — |
 | **pin** | Fix a ref to a tag or commit. A pinned ref that is synced needs no network. | A lock file; tiger has none. |
-| **refs folder** | The project folder holding copies, `tiger/` by default (`dir`). Gitignored by `tiger init`. | The store. |
+| **refs folder** | The folder holding copies, `tiger/` by default (`dir`). With `dir = "."`, copies live beside the config. | The store. |
 | **copy** | A ref's folder in the refs folder: real, read-only files. | A symlink, which tiger never makes. |
 | **clone** | A copy-on-write copy that shares the store's disk blocks. Also, for `history = true`, the project's own git clone. | A full copy. |
 | **store** | The machine's cache of repos and trees, `~/.tiger` by default. Disposable. | The refs folder. |
@@ -32,6 +32,7 @@ project ──has──▶ tiger.toml ──lists──▶ refs (id → url, ref
 | **tree** | The extracted files of one commit, read-only, under `trees/`. Copies are cloned from trees. | A git tree object. |
 | **state** | `.tiger-state.json`: what tiger last put in the refs folder. How tiger knows what it owns. | The config. |
 | **registry** | The store's list of projects, so `--everywhere` and `gc` can find them. | — |
+| **promotion** | Moving a project's data from its fallback store into the shared store, once that store is writable. | A change to a copy: a copy can stay unchanged while its data is promoted. |
 | **sync** | Make copies match the config, fetching only what changed. | Pull, update, refresh. |
 | **copied** / **checked** | When a copy was last made / when a sync last confirmed it current. A copy can be days old and checked a minute ago. | — |
 | **propagate** | Let `sync --everywhere` from another project update this one. | — |

@@ -16,6 +16,19 @@ use crate::util::{unique_name, write_atomic};
 /// The store's location when the shared one isn't writable: inside the refs folder.
 pub const FALLBACK_DIR: &str = ".tiger-store";
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StoreMode {
+    Shared,
+    Fallback,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoreLocation {
+    pub path: String,
+    pub mode: StoreMode,
+}
+
 pub struct Store {
     pub root: PathBuf,
     /// False for the fallback store inside a refs folder.
@@ -23,6 +36,52 @@ pub struct Store {
 }
 
 impl Store {
+    pub fn location(&self) -> StoreLocation {
+        StoreLocation { path: self.root.display().to_string(), mode: if self.shared { StoreMode::Shared } else { StoreMode::Fallback } }
+    }
+
+    /// Import objects from a local fallback repo and publish a complete tree.
+    /// Cached trees are complete by construction; never use a filtered project copy.
+    pub fn import(&self, source: &Store, key: &str, sha: &str) -> std::result::Result<bool, String> {
+        let _lock = self.lock_repo(key).map_err(|e| e.to_string())?;
+        let repo = self.ensure_repo(key)?;
+        let tree = self.tree_path(key, sha);
+        let complete = tree.is_dir() && git::has_commit(&repo, sha);
+        if complete {
+            return Ok(false);
+        }
+        if !git::has_commit(&repo, sha) {
+            let source_repo = source.repo_path(key).canonicalize().map_err(|e| e.to_string())?;
+            let url = format!("file://{}", source_repo.display());
+            git::run(Some(&repo), &["fetch", "--quiet", "--depth", "1", "--no-tags", "--no-write-fetch-head", &url, sha])
+                .map_err(|e| e.to_string())?;
+        }
+        if !git::has_commit(&repo, sha) {
+            return Err(format!("imported repo does not hold commit {sha}"));
+        }
+        self.keep(&repo, sha)?;
+        if !tree.is_dir() {
+            let cached = source.tree_path(key, sha);
+            if cached.is_dir() {
+                let tmp = self.root.join("tmp").join(unique_name("promoted-tree"));
+                let result = (|| {
+                    copy::clone_tree(&cached, &tmp).map_err(|e| e.to_string())?;
+                    copy::make_read_only(&tmp, None).map_err(|e| e.to_string())?;
+                    if let Some(parent) = tree.parent() {
+                        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                    }
+                    std::fs::rename(&tmp, &tree).map_err(|e| e.to_string())
+                })();
+                if result.is_err() {
+                    let _ = copy::remove(&tmp);
+                }
+                result?;
+            } else {
+                self.extract(&repo, sha, &tree)?;
+            }
+        }
+        Ok(true)
+    }
     /// The shared store's path: `$TIGER_HOME`, the `store` setting, or `~/.tiger`.
     pub fn shared_path(setting: Option<&str>) -> Result<PathBuf> {
         if let Some(home) = std::env::var_os("TIGER_HOME").filter(|v| !v.is_empty()) {
@@ -80,16 +139,16 @@ impl Store {
     }
 
     /// Held while syncing: many syncs at once, but never during `gc`.
-    pub fn lock_shared(&self) -> Result<File> {
+    pub fn lock_shared(&self, on_wait: &dyn Fn()) -> Result<File> {
         let file = self.lock_file("store.lock")?;
-        file.lock_shared().at("lock", &self.root)?;
+        crate::util::lock_or_wait(&file, true, on_wait).at("lock", &self.root)?;
         Ok(file)
     }
 
     /// Held by `gc`: no sync runs meanwhile.
-    pub fn lock_exclusive(&self) -> Result<File> {
+    pub fn lock_exclusive(&self, on_wait: &dyn Fn()) -> Result<File> {
         let file = self.lock_file("store.lock")?;
-        file.lock().at("lock", &self.root)?;
+        crate::util::lock_or_wait(&file, false, on_wait).at("lock", &self.root)?;
         Ok(file)
     }
 
@@ -112,7 +171,11 @@ impl Store {
             return Ok((sha.to_string(), tree));
         }
         let repo = self.ensure_repo(key)?;
-        let commit = if git::has_commit(&repo, sha) { sha.to_string() } else { self.fetch(&repo, url, fetch_ref, sha)? };
+        // A tag's own ID peels to its commit; trees are always stored by commit.
+        let commit = match git::peel(&repo, sha) {
+            Some(commit) => commit,
+            None => self.fetch(&repo, url, fetch_ref, sha)?,
+        };
         let tree = self.tree_path(key, &commit);
         if !tree.is_dir() {
             self.extract(&repo, &commit, &tree)?;

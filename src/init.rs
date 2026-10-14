@@ -13,7 +13,7 @@ pub fn header(dir: &str, gitignored: bool) -> String {
     let rule = "─".repeat(69);
     let search = if gitignored {
         format!(
-            "# • {dir}/ is gitignored, so project-wide searches skip it. To search a ref,\n#   pass its path: rg \"pattern\" {dir}/<id>\n"
+            "# • If {dir}/ is gitignored, project-wide searches skip it. To search a ref,\n#   pass its path: rg \"pattern\" {dir}/<id>\n"
         )
     } else {
         format!("# • To search one ref, pass its path: rg \"pattern\" {dir}/<id>\n")
@@ -28,6 +28,7 @@ pub fn header(dir: &str, gitignored: bool) -> String {
          # • Notes about a ref are plain comments directly above its entry.\n\
          # • A ref with only a URL follows the repo's default branch.\n\
          #\n\
+         # Run these commands from the folder with this config.\n\
          #   tiger add <url> [--as <id>] [--ref <branch|tag|sha>] [--note \"…\"]\n\
          #   tiger sync [<id>…]     fetch only what changed upstream\n\
          #   tiger status           which refs are behind upstream\n\
@@ -41,15 +42,23 @@ pub fn header(dir: &str, gitignored: bool) -> String {
 #[derive(Debug, Serialize)]
 pub struct Initialized {
     pub config: String,
+    pub dir: String,
     pub created: bool,
     pub gitignore: bool,
     pub snippet: String,
+    pub instructions_from: String,
+    pub next: String,
 }
 
 /// The line to add to agent instructions (AGENTS.md, CLAUDE.md, …).
-pub fn snippet(dir: &str) -> String {
+pub fn snippet(project: &Project, base: &Path) -> String {
+    let dir = crate::util::relative_path(base, &project.dir_path()).display().to_string();
+    let config = crate::util::relative_path(base, &project.config_path()).display().to_string();
+    let search = if dir == "." { "<id>".to_string() } else { format!("{}/<id>", crate::util::shell_quote(&dir)) };
+    let shown = if dir == "." { "this folder".to_string() } else { format!("`{dir}/`") };
+    let sync = project.command_from(base, "sync");
     format!(
-        "Read-only copies of repos we depend on live in `{dir}/`, managed by tiger and described in `tiger.toml`. Read the source there before guessing; search one with `rg \"pattern\" {dir}/<id>`. Refresh with `tiger sync`."
+        "Read-only copies of repos we depend on live in {shown}, managed by tiger and described in `{config}`. Read the source there before guessing; search one with `rg \"pattern\" {search}`. Refresh with `{sync}`."
     )
 }
 
@@ -59,7 +68,8 @@ pub fn init(root: &Path, dir: &str, gitignore: bool) -> Result<Initialized> {
     let path = root.join(config::FILE);
     let created = !path.exists();
     let project = if created {
-        let text = format!("{}\ndir = \"{dir}\"\n\n[refs]\n", header(dir, gitignore));
+        config::check_refs_folder(root, dir)?;
+        let text = format!("{}\ndir = {}\n\n[refs]\n", header(dir, gitignore && dir != "."), toml_edit::Value::from(dir));
         config::parse(&text)?;
         crate::util::write_atomic(&path, text.as_bytes())?;
         Project::load(root)?
@@ -69,9 +79,18 @@ pub fn init(root: &Path, dir: &str, gitignore: bool) -> Result<Initialized> {
     let dir = project.config.dir.clone();
     let refs_dir = project.dir_path();
     std::fs::create_dir_all(&refs_dir).at("create", &refs_dir)?;
-    let gitignore_added = gitignore && ensure_ignored(root, &dir)?;
+    let gitignore_added = gitignore && dir != "." && ensure_ignored(root, &dir)?;
     pointer::write(&project)?;
-    Ok(Initialized { config: path.display().to_string(), created, gitignore: gitignore_added, snippet: snippet(&dir) })
+    let base = default_root(root);
+    Ok(Initialized {
+        config: path.display().to_string(),
+        dir,
+        created,
+        gitignore: gitignore_added,
+        snippet: snippet(&project, &base),
+        instructions_from: base.display().to_string(),
+        next: project.command("add <url|owner/repo> --note \"what it is and why it's here\""),
+    })
 }
 
 /// Appends `/<dir>/` to `.gitignore` unless git already ignores the folder.

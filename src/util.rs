@@ -7,6 +7,20 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::{IoContext, Result};
 
+/// Takes a file lock, calling `on_wait` first when another process holds it,
+/// so a caller can say why it's about to block.
+pub fn lock_or_wait(file: &std::fs::File, shared: bool, on_wait: &dyn Fn()) -> std::io::Result<()> {
+    let attempt = if shared { file.try_lock_shared() } else { file.try_lock() };
+    match attempt {
+        Ok(()) => Ok(()),
+        Err(std::fs::TryLockError::WouldBlock) => {
+            on_wait();
+            if shared { file.lock_shared() } else { file.lock() }
+        }
+        Err(std::fs::TryLockError::Error(err)) => Err(err),
+    }
+}
+
 /// Runs `f` over `items` on at most `workers` threads, keeping input order.
 pub fn parallel_map<T: Sync, R: Send>(items: &[T], workers: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
     if items.len() <= 1 || workers <= 1 {
@@ -82,6 +96,32 @@ pub fn display_path(path: &Path) -> String {
         return if rest.as_os_str().is_empty() { "~".into() } else { format!("~/{}", rest.display()) };
     }
     path.display().to_string()
+}
+
+/// POSIX shell quoting for generated commands, including apostrophes.
+pub fn shell_quote(text: &str) -> String {
+    if !text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || "/._-".contains(c)) {
+        text.to_string()
+    } else {
+        format!("'{}'", text.replace('\'', "'\\''"))
+    }
+}
+
+/// Paths used by generated documents are relative to their stated starting folder.
+pub fn relative_path(base: &Path, target: &Path) -> std::path::PathBuf {
+    let base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
+    let target = target.canonicalize().unwrap_or_else(|_| target.to_path_buf());
+    let base: Vec<_> = base.components().collect();
+    let target: Vec<_> = target.components().collect();
+    let shared = base.iter().zip(&target).take_while(|(a, b)| a == b).count();
+    let mut path = std::path::PathBuf::new();
+    for _ in shared..base.len() {
+        path.push("..");
+    }
+    for part in &target[shared..] {
+        path.push(part.as_os_str());
+    }
+    if path.as_os_str().is_empty() { std::path::PathBuf::from(".") } else { path }
 }
 
 /// A Unix time as `2026-10-13 06:12 UTC`.

@@ -19,11 +19,13 @@ pub const LOCK: &str = ".tiger-lock";
 pub struct State {
     pub version: u32,
     pub refs: BTreeMap<String, RefState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_store: Option<crate::store::StoreLocation>,
 }
 
 impl Default for State {
     fn default() -> Self {
-        State { version: 1, refs: BTreeMap::new() }
+        State { version: 1, refs: BTreeMap::new(), last_store: None }
     }
 }
 
@@ -77,11 +79,19 @@ pub fn load(refs_dir: &Path) -> Result<State> {
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(State::default()),
         Err(err) => return Err(Error::io("read", &path, err)),
     };
-    serde_json::from_str(&text).map_err(|err| {
+    let state: State = serde_json::from_str(&text).map_err(|err| {
         Error::new(format!("could not read {}", path.display()))
             .context(format!("cause: {err}"))
             .hint("delete the state file and the ref folders it listed, then run `tiger sync`")
-    })
+    })?;
+    for id in state.refs.keys() {
+        crate::config::validate_id(id).map_err(|reason| {
+            Error::new(format!("invalid ownership state in {}", path.display()))
+                .context(reason)
+                .hint("fix the id in the config, state, and copy together; reserved-id migration is described in CHANGELOG.md")
+        })?;
+    }
+    Ok(state)
 }
 
 pub fn save(refs_dir: &Path, state: &State) -> Result<()> {
@@ -92,10 +102,10 @@ pub fn save(refs_dir: &Path, state: &State) -> Result<()> {
 }
 
 /// Takes the project's sync lock, creating the refs folder if needed.
-pub fn lock(refs_dir: &Path) -> Result<std::fs::File> {
+pub fn lock(refs_dir: &Path, on_wait: &dyn Fn()) -> Result<std::fs::File> {
     std::fs::create_dir_all(refs_dir).at("create", refs_dir)?;
     let path = refs_dir.join(LOCK);
     let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path).at("open", &path)?;
-    file.lock().at("lock", &path)?;
+    crate::util::lock_or_wait(&file, false, on_wait).at("lock", &path)?;
     Ok(file)
 }

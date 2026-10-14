@@ -12,6 +12,8 @@ mod history;
 mod init;
 mod output;
 mod pointer;
+mod progress;
+mod promotion;
 mod releases;
 mod remote;
 mod schedule;
@@ -35,6 +37,7 @@ use crate::error::{Error, Result};
 const AFTER_HELP: &str = "\
 Examples:
   tiger init                               create tiger.toml and the refs folder
+  tiger init --dir .                       put copies beside the config; leave ignores alone
   tiger add ueberdosis/tiptap --note \"…\"   add a GitHub repo; it follows the default branch
   tiger add git@host:me/x.git --ref v2.1   add a private repo, pinned to a tag
   tiger sync                               fetch only what changed upstream
@@ -44,6 +47,7 @@ Examples:
 
 tiger.toml:
   dir = \"tiger\"                    the refs folder (default tiger)
+                                   \".\" puts copies beside tiger.toml
   propagate = true                 let --everywhere from other projects update this one
 
   [refs]
@@ -129,6 +133,9 @@ enum Command {
     },
     /// Show what each ref tracks and whether it is behind upstream
     Status {
+        /// Only these refs (default: all)
+        #[arg(value_name = "ID")]
+        ids: Vec<String>,
         /// Don't contact remotes
         #[arg(long)]
         offline: bool,
@@ -181,6 +188,9 @@ struct AddCli {
     /// Add the entry without syncing it
     #[arg(long)]
     no_sync: bool,
+    /// Defer remote validation until sync (requires --no-sync)
+    #[arg(long)]
+    no_validate: bool,
 }
 
 #[derive(Subcommand)]
@@ -254,9 +264,15 @@ fn run(cli: Cli) -> Result<u8> {
                 println!("{} {}", if done.created { "created" } else { "found" }, util::display_path(std::path::Path::new(&done.config)));
                 if done.gitignore {
                     println!("added the refs folder to .gitignore");
+                } else if done.dir == "." {
+                    println!("copies go beside tiger.toml; ignore files are left as they are");
                 }
-                println!("\nAdd this to your agent instructions (AGENTS.md, CLAUDE.md, …):\n\n  {}\n", done.snippet);
-                println!("Next: tiger add <url|owner/repo> --note \"what it is and why it's here\"");
+                println!(
+                    "\nFor the agent instructions (AGENTS.md, CLAUDE.md, …) in {}:\n\n  {}\n",
+                    util::display_path(std::path::Path::new(&done.instructions_from)),
+                    done.snippet
+                );
+                println!("Next: {}", done.next);
             }
             Ok(0)
         }
@@ -272,6 +288,8 @@ fn run(cli: Cli) -> Result<u8> {
                 releases: a.releases,
                 no_propagate: a.no_propagate,
                 no_sync: a.no_sync,
+                no_validate: a.no_validate,
+                quiet,
             };
             let added = commands::add(&start, &args)?;
             let code = added.sync.as_ref().map(sync_code).unwrap_or(0);
@@ -285,7 +303,7 @@ fn run(cli: Cli) -> Result<u8> {
                 }
                 match (&added.added, &added.tracks) {
                     (true, Some(tracks)) => println!("added {}, {tracks}", added.id),
-                    (true, None) => println!("added {}", added.id),
+                    (true, None) => println!("added {} · remote validation deferred until sync", added.id),
                     (false, _) => println!("{} is already a ref", added.id),
                 }
             }
@@ -305,11 +323,14 @@ fn run(cli: Cli) -> Result<u8> {
                         None => println!("removed {}", r.id),
                     }
                 }
+                if removed.iter().any(|r| r.deleted.is_some()) {
+                    println!("the store keeps their data for other projects; `tiger gc` frees what no project uses");
+                }
             }
             Ok(0)
         }
         Command::Sync { ids, everywhere, force } => {
-            let outcome = sync::sync(&start, &sync::Options { ids, everywhere, force })?;
+            let outcome = sync::sync(&start, &sync::Options { ids, everywhere, force, quiet })?;
             if json {
                 if everywhere {
                     print_json(&outcome);
@@ -320,6 +341,9 @@ fn run(cli: Cli) -> Result<u8> {
                         "refs": project.map(|p| p.refs.clone()).unwrap_or_default(),
                         "summary": outcome.summary,
                         "warnings": outcome.warnings,
+                        "store": outcome.store,
+                        "registered": project.map(|p| p.registered).unwrap_or(false),
+                        "promotion": project.map(|p| p.promotion.clone()).unwrap_or_default(),
                     }));
                 }
             } else {
@@ -328,15 +352,15 @@ fn run(cli: Cli) -> Result<u8> {
             Ok(sync_code(&outcome))
         }
         Command::Pin { id, target, no_sync } => {
-            let pinned = commands::pin(&start, &id, target.as_deref(), no_sync)?;
+            let pinned = commands::pin(&start, &id, target.as_deref(), no_sync, quiet)?;
             report_pin(&pinned, json, quiet)
         }
         Command::Unpin { id, no_sync } => {
-            let pinned = commands::unpin(&start, &id, no_sync)?;
+            let pinned = commands::unpin(&start, &id, no_sync, quiet)?;
             report_pin(&pinned, json, quiet)
         }
-        Command::Status { offline } => {
-            let report = status::status(&start, offline)?;
+        Command::Status { ids, offline } => {
+            let report = status::status(&start, &ids, offline)?;
             if json {
                 print_json(&report);
             } else {

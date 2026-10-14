@@ -4,6 +4,34 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+Config and copies can now share a folder, long syncs show what they're doing, and a project synced inside a sandbox catches up with the shared store on its own.
+
+### Added
+
+- **Config and copies in one folder.** `tiger init --dir .` keeps the copies beside `tiger.toml`, for example all inside `__references__/`, and leaves your ignore files alone. tiger works outside Git too, and whether to commit the config is up to you.
+- **Progress during sync.** Sync says on stderr what it's doing as it goes: checking repos, fetching commits, waiting for another tiger process, retrying a stalled remote. A long sync never looks like a hang. `--quiet` hides it, and `--json` output is unchanged.
+- **`tiger add --no-sync --no-validate`** saves a ref without contacting its remote, so adding many refs is instant; the next sync checks them all at once.
+- **`tiger show` starts with the store:** the shared store, whether the project is registered for `--everywhere`, and whether the last sync had to use a fallback store.
+- **`tiger show` prints each ref's note,** the comment above its entry, so an agent learns why a ref is there without opening `tiger.toml`. JSON gives it as `note`.
+- **`tiger status <id>…`** checks only the refs you name, like `sync`, `show`, and `rm`.
+
+### Changed
+
+- **`tiger add` writes refs with options as inline tables**, `id = { url = "…", ref = "…" }`, under `[refs]`, so entries stay in the order you added them instead of options-bearing refs moving below the rest. Entries already written as `[refs.<id>]` tables stay valid and untouched. If a script of yours looked for `[refs.<id>]` headers, have it parse the TOML instead.
+- **Notes keep their shape.** `--note` text keeps its paragraphs and list items when wrapped at 78 columns.
+- **Hints and generated instructions use the shortest command that works** from where they'll be run: plain `tiger sync` inside the project, `tiger --cwd <folder> sync` from a parent folder.
+- **`tiger rm` says where the data went:** the store keeps it for other projects, and `tiger gc` frees what no project uses.
+- **`tiger.toml` and `TIGER.md` are reserved ids**, in any letter case, so no ref can collide with them. A ref that used one (unlikely) needs renaming by hand: stop syncs, rename its folder, and rename its key in both `tiger.toml` and `.tiger-state.json`.
+
+### Fixed
+
+- **Annotated tags pin the commit they point at.** A ref pinned to an annotated tag could record the tag's own ID instead of its commit, so `tiger show` printed the wrong commit and `tiger status` reported the tag as moved when it hadn't. Run `tiger sync` once: it corrects any ref recorded this way (it shows as `changed`, with the same files).
+- **Data from a sandbox reaches the shared store.** After a sync inside a sandbox used the fallback store, the next sync that can write the shared store now moves that data into it, even for refs that didn't change, and then cleans up the fallback store. Before, unchanged refs stayed only in the fallback store.
+- Two configs can no longer use the same refs folder, which would have mixed up which copies each one owns.
+- A refs folder can't point outside the project through a symlink, or be an existing file.
+
+The getting-started guide now covers what happens when you delete or move folders by hand (nothing breaks), keeping a config's folder out of commits, and moving copies to another folder; a separate guide moves them beside their config while keeping pins whose repo is gone. Per-ref folders are deferred, with the thinking kept in `docs/explorations/`.
+
 ## [0.1.0] - 2026-10-13
 
 The first release: read-only, up-to-date copies of other repos inside your project, so agents can read the source instead of guessing.

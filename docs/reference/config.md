@@ -1,6 +1,6 @@
 # Configuration reference
 
-Two files configure tiger: the project config `tiger.toml`, committed with the project, and the global settings file, kept per machine.
+Two files configure tiger: the project config `tiger.toml`, and the global settings file, kept per machine. Commit the project config to share its refs, or keep it locally.
 
 ## `tiger.toml`
 
@@ -27,13 +27,13 @@ exclude = ["**/*.snap"]
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `dir` | `"tiger"` | The refs folder, relative to the project. Must stay inside the project and must not be hidden (no segment starting with `.`): search tools skip hidden folders |
+| `dir` | `"tiger"` | The refs folder, relative to the folder with `tiger.toml`. `"."` puts copies beside the config. Other paths must stay inside the project and must not have hidden segments: search tools skip hidden folders |
 | `propagate` | `true` | The default for every ref's `propagate` |
 | `refs` | empty | The refs: id → URL string or table |
 
 ### Refs
 
-The key is the **id**: the ref's folder name. Ids use letters, digits, `.`, `_`, and `-`, start with a letter or digit, and differ from each other in more than case. `TIGER.md` and names ending in `.releases.md` are reserved.
+The key is the **id**: the ref's folder name. Ids use letters, digits, `.`, `_`, and `-`, start with a letter or digit, and differ from each other in more than case. `tiger.toml`, `TIGER.md`, and names ending in `.releases.md` are reserved, without regard to case.
 
 A ref is a URL string, or a table (inline or `[refs.<id>]`) with these fields:
 
@@ -58,10 +58,14 @@ tiger reports every invalid field at once, with the valid names and a suggestion
 | `<id>/` | tiger | The copy: read-only files. With `history = true`, a git clone |
 | `<id>.releases.md` | tiger | Release notes (`releases = true`) |
 | `TIGER.md` | tiger | The pointer for agents; rewritten when out of date |
-| `.tiger-state.json` | tiger | What was last synced, per id. Deleting it makes tiger treat existing copies as unmanaged |
+| `.tiger-state.json` | tiger | What tiger last put here, per id, and which store it used. Deleting it makes tiger treat existing copies as not its own |
 | `.tiger-lock`, `.tiger-tmp-*` | tiger | A sync's lock and in-progress copies |
 | `.tiger-store/` | tiger | The fallback store, when the shared one isn't writable |
 | anything else | you | Never read, changed, or deleted by tiger |
+
+With `dir = "."`, the config lives here too; tiger reads and edits it as usual and leaves everything else alone. Whether the folder is ignored is up to you.
+
+Configs can be nested, as long as each has its own refs folder: tiger refuses a config whose refs folder another config already uses. The refs folder must also stay inside the project, symlinks included, and can't be an existing file.
 
 ## Global settings
 

@@ -115,6 +115,13 @@ fn summarize(stderr: &str, args: &[&str]) -> String {
     }
 }
 
+/// The commit an object resolves to: itself for a commit, the target for an
+/// annotated tag. `None` when the repository doesn't have it.
+pub fn peel(git_dir: &Path, sha: &str) -> Option<String> {
+    let dir = git_dir.to_string_lossy();
+    run(None, &["--git-dir", &dir, "rev-parse", "--verify", "--quiet", &format!("{sha}^{{commit}}")]).ok().map(|s| s.trim().to_string())
+}
+
 /// Whether the object exists in the repository (`git cat-file -e`).
 pub fn has_commit(git_dir: &Path, sha: &str) -> bool {
     let target = format!("{sha}^{{commit}}");

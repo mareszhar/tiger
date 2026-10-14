@@ -22,6 +22,7 @@ An initiative is named after the version it ships in, without dots: `v010` for 0
 | **round report** | How good is this pass, and what must change before the next? | `__temp__/v010-round-<n>.md` |
 | **changelog** | What changed for someone using tiger, and how do they migrate? | [`CHANGELOG.md`](../../CHANGELOG.md), under `## [Unreleased]` until released |
 | **status** | Which decisions are for now, and what would reopen them? | [`docs/status.md`](../status.md) |
+| **exploration** | What did we consider, and what would we need to settle if it comes back? | [`docs/explorations/<topic>.md`](../explorations/) |
 
 - The **handoff** is written against the last release and never records progress. When execution reveals something new, the handoff gains a plan for it, written as if nobody had started.
 - The **tracker** is the implementer's memory: decisions, probes with numbers, gate results, and one row per requirement answered by a test name or `file:line`.
@@ -30,6 +31,8 @@ An initiative is named after the version it ships in, without dots: `v010` for 0
 - **Status** lists decisions made for now, each with the trigger that reopens it. When a trigger fires, the decision becomes an initiative; when it's settled for good, it moves to [vision §6](../vision.md#6-decisions).
 
 Plans describe what isn't true yet, so they stay out of tracked docs. A fact worth keeping moves into a canonical doc, rewritten in the present tense. Deleting records is the maintainer's call.
+
+An **exploration** is the exception: it records an idea we considered but didn't build, so it is tracked and opens with "Not built", linked from its row in [status](../status.md). Status keeps the decision and what would reopen it; the exploration keeps the examples and open questions for whoever picks it up.
 
 ## 3. Standing practice
 

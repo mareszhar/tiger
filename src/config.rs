@@ -15,7 +15,7 @@ const TOP_KEYS: &[&str] = &["dir", "propagate", "refs"];
 const REF_KEYS: &[&str] = &["url", "ref", "include", "exclude", "history", "releases", "propagate"];
 
 /// Names in the refs folder that tiger owns besides ref folders; ids may not take them.
-pub const RESERVED_IDS: &[&str] = &["TIGER.md"];
+pub const RESERVED_IDS: &[&str] = &["TIGER.md", "tiger.toml"];
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -45,6 +45,40 @@ pub struct Project {
 }
 
 impl Project {
+    /// A runnable hint that selects this config from any starting folder.
+    /// A command for this project, as typed from the shell's current folder:
+    /// plain `tiger` when that folder already selects this project, else a
+    /// relative `--cwd` when the project is below it, else an absolute one.
+    pub fn command(&self, args: &str) -> String {
+        format!("{} {args}", self.invocation())
+    }
+
+    pub fn invocation(&self) -> String {
+        let real = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+        let root = real(&self.root);
+        if let Ok(here) = std::env::current_dir().map(|h| real(&h)) {
+            if find_root(&here).is_some_and(|found| real(&found) == root) {
+                return "tiger".into();
+            }
+            if let Ok(below) = root.strip_prefix(&here) {
+                return format!("tiger --cwd {}", crate::util::shell_quote(&below.display().to_string()));
+            }
+        }
+        format!("tiger --cwd {}", crate::util::shell_quote(&self.root.display().to_string()))
+    }
+
+    /// A command for this project, as typed from `base`. Plain `tiger` when
+    /// config discovery from `base` already finds this project.
+    pub fn command_from(&self, base: &Path, args: &str) -> String {
+        let real = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+        let relative = crate::util::relative_path(base, &self.root);
+        if relative == Path::new(".") || find_root(base).is_some_and(|found| real(&found) == real(&self.root)) {
+            format!("tiger {args}")
+        } else {
+            format!("tiger --cwd {} {args}", crate::util::shell_quote(&relative.display().to_string()))
+        }
+    }
+
     pub fn config_path(&self) -> PathBuf {
         self.root.join(FILE)
     }
@@ -57,8 +91,56 @@ impl Project {
         let path = root.join(FILE);
         let text = std::fs::read_to_string(&path).at("read", &path)?;
         let config = parse(&text).map_err(|e| e.context(format!("in {}", path.display())))?;
+        check_refs_folder(root, &config.dir)?;
         Ok(Project { root: root.to_path_buf(), config })
     }
+}
+
+/// Configs may nest, but their ownership state must not share a refs folder.
+pub fn check_refs_folder(root: &Path, dir: &str) -> Result<()> {
+    let target = root.join(dir);
+    let actual_root = root.canonicalize().at("resolve", root)?;
+    for ancestor in target.ancestors() {
+        match std::fs::symlink_metadata(ancestor) {
+            Ok(_) => {
+                let actual = ancestor.canonicalize().at("resolve", ancestor)?;
+                if !actual.starts_with(&actual_root) {
+                    return Err(Error::new(format!("refs folder {} would be outside the project", target.display()))
+                        .hint("choose a folder inside the project; symlinks must not lead outside it"));
+                }
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(Error::io("inspect", ancestor, error)),
+        }
+    }
+    if target.exists() && !target.is_dir() {
+        return Err(Error::new(format!("refs folder {} is not a directory", target.display())).hint("choose another dir or move that file"));
+    }
+    let same = |left: &Path, right: &Path| {
+        left.canonicalize().unwrap_or_else(|_| left.to_path_buf()) == right.canonicalize().unwrap_or_else(|_| right.to_path_buf())
+    };
+    for ancestor in root.ancestors().skip(1) {
+        let config = ancestor.join(FILE);
+        if let Ok(text) = std::fs::read_to_string(&config)
+            && let Ok(other) = parse(&text)
+            && same(&ancestor.join(other.dir), &target)
+        {
+            return Err(Error::new(format!("refs folder {} is already used by {}", target.display(), config.display()))
+                .hint("use separate refs folders for separate configs"));
+        }
+    }
+    if !same(root, &target) {
+        let nested = target.join(FILE);
+        if let Ok(text) = std::fs::read_to_string(&nested)
+            && let Ok(other) = parse(&text)
+            && same(&target.join(other.dir), &target)
+        {
+            return Err(Error::new(format!("refs folder {} is already used by {}", target.display(), nested.display()))
+                .hint("use separate refs folders for separate configs"));
+        }
+    }
+    Ok(())
 }
 
 /// The nearest folder at or above `start` that holds a `tiger.toml`.
@@ -215,7 +297,7 @@ pub fn validate_id(id: &str) -> std::result::Result<(), String> {
     if id.is_empty() || !valid_chars || !id.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) {
         return Err(format!("{id:?} is not a valid id; use letters, digits, '.', '_' or '-', starting with a letter or digit"));
     }
-    if RESERVED_IDS.contains(&id) || id.ends_with(".releases.md") {
+    if RESERVED_IDS.iter().any(|reserved| reserved.eq_ignore_ascii_case(id)) || id.to_ascii_lowercase().ends_with(".releases.md") {
         return Err(format!("{id:?} is reserved by tiger"));
     }
     Ok(())
@@ -223,7 +305,10 @@ pub fn validate_id(id: &str) -> std::result::Result<(), String> {
 
 pub fn validate_dir(dir: &str) -> std::result::Result<(), String> {
     let dir = dir.trim_end_matches('/');
-    if dir.is_empty() || dir == "." {
+    if dir == "." {
+        return Ok(());
+    }
+    if dir.is_empty() {
         return Err("must name a folder inside the project, such as \"tiger\"".into());
     }
     if Path::new(dir).is_absolute() {

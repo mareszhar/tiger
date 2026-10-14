@@ -59,11 +59,16 @@ pub struct Report {
     pub refs: Vec<RefStatus>,
 }
 
-pub fn status(start: &Path, offline: bool) -> Result<Report> {
+pub fn status(start: &Path, ids: &[String], offline: bool) -> Result<Report> {
     let root = config::find_root(start).ok_or_else(|| {
         Error::new(format!("no {} in {} or any parent folder", config::FILE, start.display())).hint("run `tiger init` in the project root")
     })?;
-    let project = Project::load(&root)?;
+    let mut project = Project::load(&root)?;
+    let selected_all = ids.is_empty();
+    crate::sync::check_ids(&project, ids)?;
+    if !ids.is_empty() {
+        project.config.refs.retain(|e| ids.contains(&e.id));
+    }
     let dir = project.dir_path();
     let state = state::load(&dir)?;
     let concurrency = settings::load()?.concurrency();
@@ -150,7 +155,7 @@ pub fn status(start: &Path, offline: bool) -> Result<Report> {
         refs.push(status);
     }
     let ids: BTreeSet<&str> = project.config.refs.iter().map(|e| e.id.as_str()).collect();
-    for (id, old) in state.refs.iter().filter(|(id, _)| !ids.contains(id.as_str())) {
+    for (id, old) in state.refs.iter().filter(|(id, _)| selected_all && !ids.contains(id.as_str())) {
         refs.push(RefStatus {
             id: id.clone(),
             tracks: crate::sync::tracks(old.kind, &old.name),
