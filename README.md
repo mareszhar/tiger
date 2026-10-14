@@ -1,4 +1,4 @@
-# tiger
+# tiger 🐯
 
 > Read-only, up-to-date copies of other repos inside your project, so agents can read the source instead of guessing.
 
