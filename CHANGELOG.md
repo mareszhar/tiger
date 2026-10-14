@@ -4,6 +4,8 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-13
+
 Config and copies can now share a folder, long syncs show what they're doing, and a project synced inside a sandbox catches up with the shared store on its own.
 
 **After upgrading,** run `tiger sync --everywhere` once from a terminal, plus `tiger sync` in any project that has only ever synced inside a sandbox (it isn't registered yet). It rewrites each project's `TIGER.md` with the new instructions, corrects refs pinned to annotated tags, and moves any fallback-store data into the shared store. Configs need no changes.
@@ -54,5 +56,6 @@ The first release: read-only, up-to-date copies of other repos inside your proje
 - **`tiger gc`** prunes what no project uses from the store; **`tiger config`** shows and changes global settings (`dir`, `store`, `concurrency`, `schedule`).
 - Binaries for macOS and Linux (arm64 and x64), installable with `brew install mareszhar/tap/tiger`.
 
-[unreleased]: https://github.com/mareszhar/tiger/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/mareszhar/tiger/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mareszhar/tiger/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mareszhar/tiger/releases/tag/v0.1.0
