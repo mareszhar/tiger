@@ -279,6 +279,7 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
     let mut jobs = plan(&runs, &store, options.force);
     resolve_all(&mut jobs, settings.concurrency(), options.force, activity);
     materialize_all(&mut jobs, &runs, &store, settings.concurrency(), activity);
+    relink_copies(&jobs, &mut runs, &store, activity);
 
     // Release notes for every ref that asks for them and didn't fail.
     activity.quietly("checking release notes", jobs.len());
@@ -711,6 +712,45 @@ fn materialize_all(jobs: &mut [Job], runs: &[Run], store: &Store, concurrency: u
             Ok((resolved, mode)) => JobOutcome::Done { resolved, mode },
             Err(err) => JobOutcome::Failed(err),
         };
+    }
+}
+
+/// A copy made from a fallback store, of a commit the shared store already
+/// had, holds its own disk blocks. Re-clone it from the shared tree so it
+/// shares that space. The content is identical, so its status and copied
+/// time stay; a failure keeps the old copy and warns.
+fn relink_copies(jobs: &[Job], runs: &mut [Run], store: &Store, activity: &crate::progress::Activity) {
+    let targets: Vec<&Job> = jobs
+        .iter()
+        .filter(|job| matches!(job.outcome, JobOutcome::Unchanged) && !job.entry.history && job.folder_exists)
+        .filter(|job| job.old.as_ref().is_some_and(|old| runs[job.run].promotion.needs_relink(&store_key(&old.url), &old.commit)))
+        .collect();
+    if targets.is_empty() {
+        return;
+    }
+    let count = targets.len();
+    activity.step(
+        "re-cloning copies from the shared store",
+        count,
+        &format!("re-cloning {count} cop{} from the shared store", if count == 1 { "y" } else { "ies" }),
+    );
+    for job in targets {
+        let old = job.old.as_ref().expect("filtered on old state");
+        let run = &mut runs[job.run];
+        let tree = store.tree_path(&store_key(&old.url), &old.commit);
+        match build_copy(&tree, &run.project.dir_path(), &job.entry) {
+            Ok(mode) => {
+                run.promotion.relinked += 1;
+                if let Some(state) = run.state.refs.get_mut(&job.entry.id) {
+                    state.copy_mode = mode;
+                }
+            }
+            Err(err) => run
+                .promotion
+                .cleanup_warnings
+                .push(format!("could not re-clone {} from the shared store, so it keeps its own disk space: {err}", job.entry.id)),
+        }
+        activity.done();
     }
 }
 

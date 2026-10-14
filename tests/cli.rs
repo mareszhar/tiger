@@ -1272,6 +1272,44 @@ fn show_prints_notes_status_takes_ids_and_rm_says_where_the_data_went() {
 }
 
 #[test]
+fn copies_made_in_a_sandbox_end_up_sharing_the_shared_stores_disk_space() {
+    let env = Env::new();
+    let (_, shared_url) = env.upstream("shared");
+    let (_, only_url) = env.upstream("only");
+    // Another project already put `shared`'s commit in the shared store.
+    let other = env.project("other");
+    env.json(&other, &["add", &shared_url], 0);
+    // This project syncs inside a "sandbox": the shared store isn't writable.
+    let project = env.project("app");
+    let locked = env.root().join("locked");
+    std::fs::create_dir_all(&locked).unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let sandboxed = |args: &[&str]| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_tiger"));
+        hermetic(&mut cmd, env.root());
+        let out = cmd.current_dir(&project).env("TIGER_HOME", locked.join("store")).args(args).output().unwrap();
+        assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    };
+    sandboxed(&["add", &shared_url]);
+    sandboxed(&["add", &only_url]);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let state =
+        |id: &str| -> Value { serde_json::from_str::<Value>(&read(project.join("tiger/.tiger-state.json"))).unwrap()["refs"][id].clone() };
+    let copied_before = state("shared")["synced_at"].clone();
+
+    // The first sync that can write the shared store.
+    let out = env.json(&project, &["sync"], 0);
+    assert_eq!(statuses(&out), [pair("shared", "unchanged"), pair("only", "unchanged")], "same content, same status");
+    assert_eq!(out["promotion"]["promoted_trees"], 1, "`only` was new to the shared store");
+    assert_eq!(out["promotion"]["relinked"], 1, "`shared`'s copy now comes from the tree the shared store already had");
+    assert_eq!(state("shared")["synced_at"], copied_before, "the copied time doesn't change");
+    assert!(project.join("tiger/shared/README.md").is_file() && project.join("tiger/only/README.md").is_file());
+    // Nothing left to do on the next sync.
+    let again = env.json(&project, &["sync"], 0);
+    assert_eq!(again["promotion"]["relinked"], 0);
+}
+
+#[test]
 fn add_creates_the_config_when_there_is_none() {
     let env = Env::new();
     let (_, url) = env.upstream("lib");

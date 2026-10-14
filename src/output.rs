@@ -71,6 +71,11 @@ fn project_lines(out: &mut String, project: &ProjectReport, quiet: bool, indent_
             let _ = writeln!(out, "  promoted {} from the fallback store to the shared store", plural(p.promoted_trees, "tree"));
             wrote = true;
         }
+        if p.relinked > 0 {
+            let copies = if p.relinked == 1 { "1 copy".to_string() } else { format!("{} copies", p.relinked) };
+            let _ = writeln!(out, "  re-cloned {copies} from the shared store, so they share its disk space");
+            wrote = true;
+        }
         if p.remaining_trees > 0 || p.remaining_repos > 0 {
             let _ = writeln!(
                 out,

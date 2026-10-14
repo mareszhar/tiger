@@ -84,7 +84,8 @@ Makes copies match the config, fetching only what changed upstream.
 - Refs removed from the config have their copies and release notes deleted.
 - A ref with `releases` turned off has its `<id>.releases.md` deleted.
 - `--force` rebuilds every selected copy even when nothing changed.
-- **Promotion.** When a project has a fallback store and the shared store is writable, sync moves the selected refs' data from the fallback store into the shared store. It needs no network, leaves copies and their statuses as they are, and copies complete trees, never filtered copies.
+- **Promotion.** When a project has a fallback store and the shared store is writable, sync moves the selected refs' data from the fallback store into the shared store. It needs no network, keeps each copy's files, status, and copied time, and copies complete trees, never filtered copies.
+  - A copy made from the fallback store, of a commit the shared store already had, is re-cloned from the shared store's tree, so the two share disk space instead of each holding its own.
   - Data that fails to move stays in the fallback store for the next sync to retry. The failure is reported separately from the refs, and the exit code is 2.
   - After a full sync has moved everything, the fallback store's cache is deleted. A sync of only some refs keeps whatever the others still need. If the cleanup itself fails, sync warns and still exits 0.
 - `--everywhere` also syncs every project in the store's registry, as each project's own sync would, except that refs with `propagate = false` in other projects are skipped. With ids, other projects sync only refs for the same repos. It runs without a current project (the scheduled job does), forgets registered projects whose `tiger.toml` is gone, and needs a writable shared store.
@@ -256,7 +257,7 @@ Shows or changes [global settings](./config.md#global-settings). `list` (the def
 
 `tiger sync --everywhere --json` has `projects` (each `{ project, refs, summary, error? }`), `summary` across all of them, and `warnings`. `tiger add`, `pin`, and `unpin` include the sync they ran under `sync`.
 
-Sync also gives `store` (`path`, and `mode`: `shared` or `fallback`), plus `registered` and `promotion` for the project (per project with `--everywhere`). `promotion` gives `promoted_trees`, `remaining_trees` and `remaining_repos` (what the fallback store still holds), `failures` (each `{ repo, commit, error }`), and `cleanup_warnings`. `summary.failed` counts only refs; an exit code of 2 with no failed refs means a promotion failure.
+Sync also gives `store` (`path`, and `mode`: `shared` or `fallback`), plus `registered` and `promotion` for the project (per project with `--everywhere`). `promotion` gives `promoted_trees`, `relinked` (copies re-cloned from the shared store), `remaining_trees` and `remaining_repos` (what the fallback store still holds), `failures` (each `{ repo, commit, error }`), and `cleanup_warnings`. `summary.failed` counts only refs; an exit code of 2 with no failed refs means a promotion failure.
 
 `tiger status --json`:
 

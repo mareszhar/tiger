@@ -63,7 +63,7 @@ A sync checks every repo with one `git ls-remote` in parallel and downloads only
 
 ## 5. Every project at once
 
-Every project that syncs is registered in the shared store (`~/.tiger`), and a repo is downloaded once per machine however many projects use it. To update every project that uses a changed repo:
+Every project that syncs is registered in the shared store (`~/.tiger`), and a repo is downloaded once per machine however many projects use it. Copies share their disk space with the store, though Finder and `du` still count each copy at full size; the saving shows up as free space on your disk. To update every project that uses a changed repo:
 
 ```sh
 tiger sync --everywhere
@@ -105,7 +105,7 @@ Choose one:
 - **Refresh outside the sandbox.** Run `tiger sync --everywhere` in your terminal, or set a schedule, and let agents just read.
 - **Allow writes to the store.** Add `~/.tiger` to your sandbox's writable paths; agents' syncs then share the store too.
 
-When a later sync can write the shared store, tiger moves what the fallback store holds into it, without the network and without touching your copies, then cleans up the fallback store. Anything that fails to move stays put for the next sync to retry. `tiger show` says which store the last sync used and whether the project is registered for `--everywhere`.
+When a later sync can write the shared store, tiger moves what the fallback store holds into it, without the network and without changing your copies' files, then cleans up the fallback store. Copies of commits the shared store already had are re-cloned from it, so they share its disk space. Anything that fails to move stays put for the next sync to retry. `tiger show` says which store the last sync used and whether the project is registered for `--everywhere`.
 
 ## 8. Private repos
 

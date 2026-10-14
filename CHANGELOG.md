@@ -4,6 +4,11 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+### Fixed
+
+- **Copies made inside a sandbox end up sharing disk space.** When a project first synced inside a sandbox, its copies came from its own fallback store. If the shared store already had those commits, the copies kept their own disk space even after promotion. The next sync with a writable shared store now re-clones them from it, without changing their files, status, or copied time. Projects already promoted get the same result with one `tiger sync --force`.
+- The getting-started guide explains that Finder and `du` count each copy at full size even though copies share disk space with the store.
+
 ## [0.2.1] - 2026-10-13
 
 ### Changed

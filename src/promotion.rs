@@ -15,10 +15,22 @@ pub struct Report {
     pub promoted_trees: usize,
     pub remaining_trees: usize,
     pub remaining_repos: usize,
+    /// Copies re-cloned from the shared store so they share its disk space.
+    pub relinked: usize,
     pub failures: Vec<Failure>,
     pub cleanup_warnings: Vec<String>,
     #[serde(skip)]
     imported: BTreeSet<(String, String)>,
+    /// Commits the shared store already had its own tree for: copies made
+    /// from the fallback store hold separate disk blocks until re-cloned.
+    #[serde(skip)]
+    already_shared: BTreeSet<(String, String)>,
+}
+
+impl Report {
+    pub fn needs_relink(&self, key: &str, sha: &str) -> bool {
+        self.already_shared.contains(&(key.to_string(), sha.to_string()))
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -49,6 +61,9 @@ pub fn import(source: &Store, destination: &Store, state: &State, entries: &[Ref
         match result {
             Ok(Some(created)) => {
                 report.promoted_trees += usize::from(created);
+                if !created {
+                    report.already_shared.insert((key.clone(), sha.clone()));
+                }
                 report.imported.insert((key, sha));
             }
             Err(error) => report.failures.push(Failure { repo: key, commit: sha, error }),
