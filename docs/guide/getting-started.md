@@ -8,7 +8,7 @@ From nothing to agents reading real source in a few minutes, then one refresh fo
 brew install mareszhar/tap/tiger
 ```
 
-Or download a binary from [GitHub Releases](https://github.com/mareszhar/tiger/releases) (macOS and Linux, arm64 and x64) and put it on your `PATH`. Or build it: `cargo install --git https://github.com/mareszhar/tiger`. The only runtime requirement is `git`.
+Or download a binary from [GitHub Releases](https://github.com/mareszhar/tiger/releases) (macOS and Linux, arm64 and x64) and put it on your `PATH`. Or build it: `cargo install --git https://github.com/mareszhar/tiger`. The only runtime requirement is `git`. To upgrade later, run `brew update && brew upgrade tiger`; `brew upgrade` alone may not see a new release for up to a day.
 
 ## 2. Add your first refs
 
