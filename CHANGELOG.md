@@ -4,6 +4,8 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-14
+
 ### Changed
 
 - **One store entry per repo, whatever the letter case.** On GitHub, GitLab, Bitbucket, and Codeberg, where `TanStack/router` and `tanstack/router` are the same repo, both spellings now share one entry in the store instead of being downloaded twice. Elsewhere, case still tells repos apart. Existing store folders are renamed to match on the first sync or `tiger gc` that has the store to itself; nothing is downloaded again.
@@ -78,7 +80,8 @@ The first release: read-only, up-to-date copies of other repos inside your proje
 - **`tiger gc`** prunes what no project uses from the store; **`tiger config`** shows and changes global settings (`dir`, `store`, `concurrency`, `schedule`).
 - Binaries for macOS and Linux (arm64 and x64), installable with `brew install mareszhar/tap/tiger`.
 
-[unreleased]: https://github.com/mareszhar/tiger/compare/v0.2.2...HEAD
+[unreleased]: https://github.com/mareszhar/tiger/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/mareszhar/tiger/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/mareszhar/tiger/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/mareszhar/tiger/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mareszhar/tiger/compare/v0.1.0...v0.2.0
