@@ -4,6 +4,8 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-14
+
 ### Changed
 
 - `tiger --help` lists the exit codes one per line as `1 = usage or config error`, so they no longer read like a report of failures.
@@ -84,7 +86,8 @@ The first release: read-only, up-to-date copies of other repos inside your proje
 - **`tiger gc`** prunes what no project uses from the store; **`tiger config`** shows and changes global settings (`dir`, `store`, `concurrency`, `schedule`).
 - Binaries for macOS and Linux (arm64 and x64), installable with `brew install mareszhar/tap/tiger`.
 
-[unreleased]: https://github.com/mareszhar/tiger/compare/v0.2.3...HEAD
+[unreleased]: https://github.com/mareszhar/tiger/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/mareszhar/tiger/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/mareszhar/tiger/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/mareszhar/tiger/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/mareszhar/tiger/compare/v0.2.0...v0.2.1
