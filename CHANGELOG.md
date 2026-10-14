@@ -6,6 +6,8 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 Config and copies can now share a folder, long syncs show what they're doing, and a project synced inside a sandbox catches up with the shared store on its own.
 
+**After upgrading,** run `tiger sync --everywhere` once from a terminal, plus `tiger sync` in any project that has only ever synced inside a sandbox (it isn't registered yet). It rewrites each project's `TIGER.md` with the new instructions, corrects refs pinned to annotated tags, and moves any fallback-store data into the shared store. Configs need no changes.
+
 ### Added
 
 - **Config and copies in one folder.** `tiger init --dir .` keeps the copies beside `tiger.toml`, for example all inside `__references__/`, and leaves your ignore files alone. tiger works outside Git too, and whether to commit the config is up to you.
