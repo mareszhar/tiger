@@ -4,6 +4,10 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+### Changed
+
+- `tiger --help` lists the exit codes one per line as `1 = usage or config error`, so they no longer read like a report of failures.
+
 ## [0.2.3] - 2026-10-14
 
 ### Changed

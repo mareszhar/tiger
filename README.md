@@ -84,7 +84,7 @@ tiger gc                        prune what no project uses from the store
 tiger config [set <key> <v>]    global settings: dir, store, concurrency, schedule
 ```
 
-Every command takes `--json`. Exit codes: `0` ok, `1` usage or config error, `2` part of a sync failed (the rest still synced).
+Every command takes `--json`. Exit codes: `0` = done, `1` = usage or config error, `2` = part of a sync failed (the rest still synced).
 
 ## Good to know
 

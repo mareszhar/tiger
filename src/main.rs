@@ -63,7 +63,10 @@ tiger.toml:
   releases = false                 true: write <id>.releases.md from GitHub Releases
   propagate = true                 false: only this project's own sync updates it
 
-Exit codes: 0 ok · 1 usage or config error · 2 some refs failed (the rest synced)";
+Exit codes:
+  0 = done
+  1 = usage or config error
+  2 = part of a sync failed; everything else still synced";
 
 #[derive(Parser)]
 #[command(
