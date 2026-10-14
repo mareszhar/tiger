@@ -4,6 +4,11 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+### Changed
+
+- **Quieter progress.** While a step runs, sync adds an update only when the step advanced, at most every 5 seconds, plus one every 15 seconds when nothing moved, instead of repeating itself every 2 seconds. Copying and fallback-store cleanup now announce themselves when they start.
+- **The getting-started guide shows how to upgrade:** `brew update && brew upgrade tiger`, since `brew upgrade` alone can miss a new release for up to a day.
+
 ## [0.2.0] - 2026-10-13
 
 Config and copies can now share a folder, long syncs show what they're doing, and a project synced inside a sandbox catches up with the shared store on its own.

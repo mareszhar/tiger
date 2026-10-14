@@ -1,14 +1,23 @@
-//! Sync activity on stderr: a line when work starts, a line when a phase
-//! with real work begins, and a heartbeat when nothing was printed for two
-//! seconds, so a long fetch or a lock wait never looks like a hang. Quiet
-//! steps (locks, state, cleanup) only show up through the heartbeat, when
+//! Sync activity on stderr: a line when work starts, a line when a step
+//! with real work begins, then an update only when it says something new:
+//! at most every 5 seconds when the step advanced, and every 15 seconds when
+//! nothing did, so a long fetch or a lock wait never looks like a hang.
+//! Bookkeeping steps (locks, state) only show up through those updates, when
 //! they are slow enough to matter.
 
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-const HEARTBEAT: Duration = Duration::from_secs(2);
+/// An update when the step advanced and this long passed since the last line.
+const PROGRESS_EVERY: Duration = Duration::from_secs(5);
+/// An update even when nothing advanced, so the process never looks hung.
+const ALIVE_EVERY: Duration = Duration::from_secs(15);
+
+/// Whether a heartbeat should print: something new to say, or a long silence.
+fn update_due(since_last_line: Duration, advanced: bool) -> bool {
+    since_last_line >= ALIVE_EVERY || (advanced && since_last_line >= PROGRESS_EVERY)
+}
 
 #[derive(Clone)]
 pub struct Activity {
@@ -25,6 +34,8 @@ struct ActivityState {
     done: usize,
     total: usize,
     last_print: Instant,
+    /// `done` as of the last printed line, to tell whether the step advanced.
+    printed_done: usize,
 }
 
 impl Activity {
@@ -71,6 +82,7 @@ impl ActivityState {
         self.label = label.to_string();
         self.done = 0;
         self.total = total;
+        self.printed_done = 0;
     }
 
     fn print(&mut self, text: &str) {
@@ -79,9 +91,10 @@ impl ActivityState {
     }
 
     fn heartbeat(&mut self) {
-        if !self.begun || self.last_print.elapsed() < HEARTBEAT {
+        if !self.begun || !update_due(self.last_print.elapsed(), self.done != self.printed_done) {
             return;
         }
+        self.printed_done = self.done;
         let counts = if self.total > 1 { format!(" · {}/{} done", self.done, self.total) } else { String::new() };
         let elapsed = crate::util::format_duration_ms(self.started.elapsed().as_millis());
         let text = format!("{}{counts} · {elapsed}", self.label);
@@ -106,6 +119,7 @@ impl Progress {
                 done: 0,
                 total: 0,
                 last_print: Instant::now(),
+                printed_done: 0,
             })),
         };
         let (stop, receiver) = mpsc::channel();
@@ -127,5 +141,19 @@ impl Drop for Progress {
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn updates_only_when_something_advanced_or_after_a_long_silence() {
+        let s = Duration::from_secs;
+        assert!(!update_due(s(2), true), "too soon, even with progress");
+        assert!(update_due(s(5), true), "progress, 5s after the last line");
+        assert!(!update_due(s(10), false), "nothing new to say yet");
+        assert!(update_due(s(15), false), "a sign of life after 15s");
     }
 }

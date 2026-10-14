@@ -50,7 +50,7 @@ finish        delete refs removed from the config (only ids in the state file)
 | `commands.rs` | `add`, `rm`, `pin`, `unpin`: check first, then edit, then sync |
 | `init.rs` | The usage header, `.gitignore`, first config |
 | `pointer.rs` | `TIGER.md` |
-| `progress.rs` | Progress on stderr: a line per step with real work, lock waits and retries as they happen, a heartbeat after two quiet seconds |
+| `progress.rs` | Progress on stderr: a line per step with real work, lock waits and retries as they happen, and updates only when the step advanced (at most every 5s) or after 15s of silence |
 | `promotion.rs` | Fallback imports, separate failure reports, and verified duplicate cleanup |
 | `remote.rs` | `Want` (what a ref asks for), `ls-remote`, resolution to `Resolved` |
 | `sync.rs` | The sync pipeline above, reports |

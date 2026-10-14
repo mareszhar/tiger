@@ -437,8 +437,8 @@ fn sync_reports_activity_before_and_during_a_lock_wait_without_changing_json() {
     reader.join().unwrap();
     assert!(first.is_ok(), "no immediate progress before lock acquisition");
     assert!(
-        waiting.iter().filter(|line| line.contains("waiting for another tiger process")).count() >= 2,
-        "no recurring lock activity: {waiting:?}"
+        waiting.iter().any(|line| line.contains("waiting for another tiger process")),
+        "the wait was not announced while blocked: {waiting:?}"
     );
     assert!(waiting.iter().all(|line| !line.contains("1/1 refs completed")), "premature completion: {waiting:?}");
     assert!(out.status.success());

@@ -108,10 +108,10 @@ While it works, sync reports progress on stderr, so a long fetch never looks lik
 tiger: syncing 42 refs
 tiger: checking 40 repos upstream
 tiger: fetching 3 commits
-tiger: fetching commits · 1/3 done · 4.0s
+tiger: fetching commits · 1/3 done · 6.0s
 ```
 
-It prints a line when work starts and when a step with real work begins, and repeats the current step when two seconds pass without output. It says right away when it waits for another tiger process, and when a remote stalls and is retried. `--quiet` hides progress, and `--json` keeps stdout to the one final document.
+It prints a line when work starts and when a step with real work begins (checking, fetching, copying, cleaning up a fallback store). While a step runs, it adds an update only when there is something new: at most every 5 seconds when the step advanced, and every 15 seconds when nothing did, so a long wait never looks like a hang. It says right away when it waits for another tiger process, and when a remote stalls and is retried. `--quiet` hides progress, and `--json` keeps stdout to the one final document.
 
 ## `tiger pin`
 

@@ -450,7 +450,18 @@ pub fn sync(start: &Path, options: &Options) -> Result<Outcome> {
     for root in &missing {
         warnings.push(format!("forgot {}: it no longer has a {}", display_path(root), config::FILE));
     }
-    activity.quietly("cleaning up the fallback store", 0);
+    // An emptied fallback store keeps its lock files, so count only ones still holding data.
+    let fallbacks = runs
+        .iter()
+        .zip(&sources)
+        .filter(|(run, source)| {
+            registered.contains(&run.project.root)
+                && source.as_ref().is_some_and(|s| {
+                    !crate::gc::sha_dirs(&s.root.join("trees")).is_empty() || !crate::gc::repo_dirs(&s.root.join("repos")).is_empty()
+                })
+        })
+        .count();
+    activity.step("cleaning up the fallback store", fallbacks, "cleaning up the fallback store");
     for (run, source) in runs.iter_mut().zip(&sources) {
         if registered.contains(&run.project.root)
             && let Some(source) = source
@@ -674,7 +685,7 @@ fn materialize_all(jobs: &mut [Job], runs: &[Run], store: &Store, concurrency: u
         wanted.into_iter().map(|(k, _)| k).zip(fetched).collect();
 
     let indices: Vec<usize> = (0..jobs.len()).filter(|i| matches!(jobs[*i].outcome, JobOutcome::Resolved(_))).collect();
-    activity.quietly("copying refs", indices.len());
+    activity.step("copying refs", indices.len(), &format!("copying {}", plural(indices.len(), "ref")));
     let results = {
         let jobs: &[Job] = jobs;
         parallel_map(&indices, concurrency, |i| {
