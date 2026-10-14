@@ -32,6 +32,7 @@ pub fn gc() -> Result<Collected> {
         return Err(Error::new(format!("can't write the shared store at {}", path.display())).hint("run `tiger gc` outside the sandbox"));
     };
     let _lock = store.lock_exclusive(&|| eprintln!("tiger: waiting for running syncs to finish"))?;
+    store.fold_case();
     let mut out = Collected { store: store.root.display().to_string(), bytes_before: size(&store.root), ..Collected::default() };
 
     // Commits in use, per store key, from every registered project's state.
@@ -109,7 +110,7 @@ pub fn sha_dirs(trees: &Path) -> Vec<(String, PathBuf)> {
         let name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         if is_sha(&name) {
             let key = dir.parent().and_then(|p| p.strip_prefix(trees).ok()).map(|p| p.display().to_string()).unwrap_or_default();
-            found.push((key, dir.to_path_buf()));
+            found.push((crate::url::fold_key(&key), dir.to_path_buf()));
             return false;
         }
         true
@@ -124,7 +125,7 @@ pub fn repo_dirs(repos: &Path) -> Vec<(String, PathBuf)> {
         if let Some(stem) = name.strip_suffix(".git") {
             let parent = dir.parent().and_then(|p| p.strip_prefix(repos).ok()).map(|p| p.display().to_string()).unwrap_or_default();
             let key = if parent.is_empty() { stem.to_string() } else { format!("{parent}/{stem}") };
-            found.push((key, dir.to_path_buf()));
+            found.push((crate::url::fold_key(&key), dir.to_path_buf()));
             return false;
         }
         true

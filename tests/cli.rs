@@ -703,6 +703,7 @@ fn the_documented_move_checks_destinations_and_preserves_state_and_user_files() 
     let sync = env.json(&project, &["sync"], 0);
     assert_eq!(sync["refs"][0]["status"], "unchanged");
     assert_eq!(sync["promotion"]["promoted_trees"], 1);
+    assert!(!project.join(".tiger-store").exists(), "the emptied fallback store is removed");
     let new_state: Value = serde_json::from_str(&read(project.join(".tiger-state.json"))).unwrap();
     assert_eq!(new_state["refs"]["lib"]["synced_at"], old_state["refs"]["lib"]["synced_at"]);
     assert!(read(project.join("TIGER.md")).contains("](tiger.toml)"));
@@ -1304,9 +1305,66 @@ fn copies_made_in_a_sandbox_end_up_sharing_the_shared_stores_disk_space() {
     assert_eq!(out["promotion"]["relinked"], 1, "`shared`'s copy now comes from the tree the shared store already had");
     assert_eq!(state("shared")["synced_at"], copied_before, "the copied time doesn't change");
     assert!(project.join("tiger/shared/README.md").is_file() && project.join("tiger/only/README.md").is_file());
+    assert!(!project.join("tiger/.tiger-store").exists(), "the emptied fallback store is removed");
     // Nothing left to do on the next sync.
     let again = env.json(&project, &["sync"], 0);
     assert_eq!(again["promotion"]["relinked"], 0);
+}
+
+#[test]
+fn spellings_that_differ_only_in_case_share_the_store_on_github() {
+    let env = Env::new();
+    let (dir, _) = env.upstream("lib");
+    let sha = env.git(&dir, &["rev-parse", "HEAD"]);
+    // Both spellings reach the same local repo, offline, through git's own rewrites.
+    let global = env.root().join("gitconfig");
+    let target = format!("file://{}", dir.display());
+    std::fs::write(
+        &global,
+        format!("[url \"{target}\"]\n\tinsteadOf = https://github.com/Acme/Lib\n\tinsteadOf = https://github.com/acme/lib\n"),
+    )
+    .unwrap();
+    let tiger = |project: &Path, args: &[&str], code: i32| -> Value {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_tiger"));
+        hermetic(&mut cmd, env.root());
+        let mut all = vec!["--json"];
+        all.extend_from_slice(args);
+        let out = cmd.current_dir(project).env("GIT_CONFIG_GLOBAL", &global).args(&all).output().unwrap();
+        assert_eq!(out.status.code(), Some(code), "{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        serde_json::from_slice(&out.stdout).unwrap()
+    };
+    let one = env.project("one");
+    let two = env.project("two");
+    tiger(&one, &["add", "https://github.com/Acme/Lib"], 0);
+    tiger(&two, &["add", "https://github.com/acme/lib"], 0);
+    let names = |path: PathBuf| -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(path).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        names.sort();
+        names
+    };
+    assert_eq!(names(env.store().join("repos/github.com")), ["acme"], "one entry for both spellings");
+    assert_eq!(names(env.store().join("trees/github.com/acme/lib")), [sha.as_str()]);
+    let elsewhere = tiger(&one, &["show"], 0)["refs"][0]["elsewhere"][0]["project"].as_str().unwrap().to_string();
+    assert_eq!(Path::new(&elsewhere).canonicalize().unwrap(), two.canonicalize().unwrap(), "show finds the other spelling");
+
+    // A store written before case folding: folders keep the spelling of the first URL.
+    for (from, to) in [("repos/github.com/acme", "repos/github.com/Acme"), ("trees/github.com/acme", "trees/github.com/Acme")] {
+        std::fs::rename(env.store().join(from), env.store().join("staging")).unwrap();
+        std::fs::rename(env.store().join("staging"), env.store().join(to)).unwrap();
+    }
+    std::fs::rename(env.store().join("repos/github.com/Acme/lib.git"), env.store().join("repos/github.com/Acme/Lib.git")).unwrap();
+    let store = tiger(&one, &["store"], 0);
+    assert_eq!(store["repos"][0]["trees"][0]["used_by"].as_array().unwrap().len(), 2, "still recognized as in use");
+    let collected = tiger(&one, &["gc"], 0);
+    assert_eq!(collected["removed_trees"], 0, "gc keeps data stored under the old spelling");
+    assert_eq!(names(env.store().join("repos/github.com")), ["acme"], "and renames it");
+    assert_eq!(names(env.store().join("repos/github.com/acme")), ["lib.git"]);
+    assert_eq!(names(env.store().join("trees/github.com/acme/lib")), [sha]);
+    assert!(
+        read(env.store().join(format!("trees/github.com/acme/lib/{}/README.md", names(env.store().join("trees/github.com/acme/lib"))[0])))
+            .contains("hello"),
+        "files inside a tree keep their names"
+    );
 }
 
 #[test]

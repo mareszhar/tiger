@@ -60,7 +60,7 @@ tiger reports every invalid field at once, with the valid names and a suggestion
 | `TIGER.md` | tiger | The pointer for agents; rewritten when out of date |
 | `.tiger-state.json` | tiger | What tiger last put here, per id, and which store it used. Deleting it makes tiger treat existing copies as not its own |
 | `.tiger-lock`, `.tiger-tmp-*` | tiger | A sync's lock and in-progress copies |
-| `.tiger-store/` | tiger | The fallback store, when the shared one isn't writable |
+| `.tiger-store/` | tiger | The fallback store, when the shared one isn't writable. Removed once its data has moved to the shared store |
 | anything else | you | Never read, changed, or deleted by tiger |
 
 With `dir = "."`, the config lives here too; tiger reads and edits it as usual and leaves everything else alone. Whether the folder is ignored is up to you.
@@ -98,5 +98,7 @@ The job runs the `tiger` on your `PATH` when that is the same binary (so upgrade
   registry.json                projects that use the store
   locks/  logs/  tmp/
 ```
+
+A repo's folder comes from its URL, so ids never matter here: two projects can call the same repo different things, or use the same id for different repos. HTTPS and SSH URLs of one repo share a folder, and on GitHub, GitLab, Bitbucket, and Codeberg, which ignore letter case in owner and repo names, so do spellings that differ only in case (the folder uses lowercase). On other hosts, case can tell repos apart, so it's kept.
 
 Deleting the store loses nothing: each project rebuilds on its next sync and registers again. `tiger gc` removes what no project uses.

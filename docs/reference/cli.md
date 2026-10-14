@@ -87,7 +87,7 @@ Makes copies match the config, fetching only what changed upstream.
 - **Promotion.** When a project has a fallback store and the shared store is writable, sync moves the selected refs' data from the fallback store into the shared store. It needs no network, keeps each copy's files, status, and copied time, and copies complete trees, never filtered copies.
   - A copy made from the fallback store, of a commit the shared store already had, is re-cloned from the shared store's tree, so the two share disk space instead of each holding its own.
   - Data that fails to move stays in the fallback store for the next sync to retry. The failure is reported separately from the refs, and the exit code is 2.
-  - After a full sync has moved everything, the fallback store's cache is deleted. A sync of only some refs keeps whatever the others still need. If the cleanup itself fails, sync warns and still exits 0.
+  - After a full sync has moved everything, the fallback store is deleted, unless someone put files of their own in it. A sync of only some refs keeps whatever the others still need. If the cleanup itself fails, sync warns and still exits 0.
 - `--everywhere` also syncs every project in the store's registry, as each project's own sync would, except that refs with `propagate = false` in other projects are skipped. With ids, other projects sync only refs for the same repos. It runs without a current project (the scheduled job does), forgets registered projects whose `tiger.toml` is gone, and needs a writable shared store.
 
 Output, one line per ref that didn't stay unchanged:

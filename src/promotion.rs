@@ -116,9 +116,42 @@ pub fn cleanup(source: &Store, state: &State, entries: &[RefEntry], full: bool, 
             report.cleanup_warnings.push(format!("could not remove redundant fallback repo {}: {error}", repo.display()));
         }
     }
-    // Keep the source root and locks. A waiting sync may already hold a lock fd.
-    // Unknown files and temporary work are not blanket-deleted.
     observe(source, report);
+    // An emptied fallback store goes too, unless it holds something that isn't
+    // tiger's. Removing its lock files is safe: every sync that uses this store
+    // also holds the project's lock, so two syncs of the project never overlap.
+    if report.remaining_trees == 0
+        && report.remaining_repos == 0
+        && report.failures.is_empty()
+        && only_tiger_structure(&source.root)
+        && let Err(error) = crate::copy::remove(&source.root)
+    {
+        report.cleanup_warnings.push(format!("could not remove the empty fallback store {}: {error}", source.root.display()));
+    }
+}
+
+/// Whether a fallback store holds nothing but tiger's own empty structure:
+/// lock files, empty `repos/` and `trees/` folders, leftover `tmp/` work, and
+/// an empty registry. Anything else (a file someone put there) keeps it.
+fn only_tiger_structure(root: &std::path::Path) -> bool {
+    fn no_files(dir: &std::path::Path) -> bool {
+        std::fs::read_dir(dir)
+            .is_ok_and(|entries| entries.flatten().all(|e| e.file_type().is_ok_and(|t| t.is_dir()) && no_files(&e.path())))
+    }
+    let Ok(entries) = std::fs::read_dir(root) else { return false };
+    entries.flatten().all(|entry| {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let path = entry.path();
+        match name.as_str() {
+            "repos" | "trees" => no_files(&path),
+            "tmp" => true,
+            "locks" => {
+                std::fs::read_dir(&path).is_ok_and(|locks| locks.flatten().all(|l| l.file_name().to_string_lossy().ends_with(".lock")))
+            }
+            "registry.json" => true, // checked above: no registered projects
+            _ => false,
+        }
+    })
 }
 
 fn observe(source: &Store, report: &mut Report) {

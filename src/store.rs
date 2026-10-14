@@ -123,6 +123,28 @@ impl Store {
         ok
     }
 
+    /// `fold_case`, only when no other tiger process is using the store.
+    pub fn fold_case_when_alone(&self) {
+        if let Ok(file) = self.lock_file("store.lock")
+            && file.try_lock().is_ok()
+        {
+            self.fold_case();
+        }
+    }
+
+    /// Renames folders stored before tiger folded letter case on hosts that
+    /// ignore it (`repos/github.com/TanStack/router.git` becomes
+    /// `.../tanstack/router.git`). Lookups already ignore case there; this
+    /// keeps the folder names tidy. Only owner and repo folders are renamed,
+    /// never anything inside a repo or tree. When a lowercase folder already
+    /// exists, the older one is left for `gc`. The caller holds the store alone.
+    pub fn fold_case(&self) {
+        for host in crate::url::CASE_INSENSITIVE_HOSTS {
+            fold_names(&self.root.join("repos").join(host), &|name| name.ends_with(".git"));
+            fold_names(&self.root.join("trees").join(host), &|name| crate::git::is_full_sha(name));
+        }
+    }
+
     pub fn repo_path(&self, key: &str) -> PathBuf {
         self.root.join("repos").join(format!("{key}.git"))
     }
@@ -321,5 +343,37 @@ pub fn expand_home(path: &str) -> PathBuf {
         (Some(rest), Some(home)) => home.join(rest),
         _ if path == "~" => crate::util::home_dir().unwrap_or_else(|| PathBuf::from(path)),
         _ => PathBuf::from(path),
+    }
+}
+
+/// Lowercases folder names under `dir`, stopping at leaves (a bare repo or a
+/// commit's tree), whose contents keep their names.
+fn fold_names(dir: &Path, is_leaf: &dyn Fn(&str) -> bool) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let mut path = entry.path();
+        let lower = name.to_ascii_lowercase();
+        if lower != name {
+            let target = dir.join(&lower);
+            // On a case-insensitive disk `target` *is* `path`, so rename through a temporary name.
+            let same = target.canonicalize().ok() == path.canonicalize().ok();
+            if same || !target.exists() {
+                let staging = dir.join(crate::util::unique_name(".tiger-fold"));
+                if std::fs::rename(&path, &staging).is_ok() {
+                    if std::fs::rename(&staging, &target).is_ok() {
+                        path = target;
+                    } else {
+                        let _ = std::fs::rename(&staging, &path);
+                    }
+                }
+            }
+        }
+        if !is_leaf(&name) {
+            fold_names(&path, is_leaf);
+        }
     }
 }

@@ -4,6 +4,14 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+### Changed
+
+- **One store entry per repo, whatever the letter case.** On GitHub, GitLab, Bitbucket, and Codeberg, where `TanStack/router` and `tanstack/router` are the same repo, both spellings now share one entry in the store instead of being downloaded twice. Elsewhere, case still tells repos apart. Existing store folders are renamed to match on the first sync or `tiger gc` that has the store to itself; nothing is downloaded again.
+
+### Fixed
+
+- **An emptied fallback store is removed.** Once a project's fallback store has moved all its data into the shared store, sync now deletes its `.tiger-store/` folder instead of leaving empty folders behind. A fallback store holding files that aren't tiger's is left alone.
+
 ## [0.2.2] - 2026-10-14
 
 ### Fixed

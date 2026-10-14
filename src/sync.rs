@@ -525,7 +525,14 @@ fn lock_stores(destination: &Store, sources: &[Option<Store>], activity: &crate:
     for (root, shared) in stores {
         let store = Store { root, shared };
         let wait = || activity.message("waiting for another tiger process to finish with the store");
-        locks.push(if shared { store.lock_shared(&wait)? } else { store.lock_exclusive(&wait)? });
+        if shared {
+            // Renaming needs the store to itself; lookups ignore case either way.
+            store.fold_case_when_alone();
+            locks.push(store.lock_shared(&wait)?);
+        } else {
+            locks.push(store.lock_exclusive(&wait)?);
+            store.fold_case();
+        }
         activity.done();
     }
     Ok(locks)

@@ -36,13 +36,28 @@ pub fn host_and_path(url: &str) -> (String, String) {
     (host, path.to_string())
 }
 
+/// Hosts whose owner and repo names ignore letter case, so `TanStack/router`
+/// and `tanstack/router` are one repo. Elsewhere, case can tell repos apart.
+pub const CASE_INSENSITIVE_HOSTS: &[&str] = &["github.com", "gitlab.com", "bitbucket.org", "codeberg.org"];
+
 /// The store key for a URL: `github.com/ueberdosis/tiptap`. HTTPS and SSH
-/// URLs of the same repository share a key, so they share the store.
+/// URLs of the same repository share a key, so they share the store; so do
+/// spellings that differ only in case on hosts that ignore it.
 pub fn store_key(url: &str) -> String {
     let (host, path) = host_and_path(url);
     let mut parts = vec![sanitize(&host)];
     parts.extend(path.split('/').filter(|p| !p.is_empty() && *p != "." && *p != "..").map(sanitize));
-    parts.join("/")
+    fold_key(&parts.join("/"))
+}
+
+/// Lowercases a store key's path on hosts that ignore case. Store folders
+/// read back from disk go through this too, so a key compares equal however
+/// its folder happens to be spelled.
+pub fn fold_key(key: &str) -> String {
+    match key.split_once('/') {
+        Some((host, path)) if CASE_INSENSITIVE_HOSTS.contains(&host) => format!("{host}/{}", path.to_ascii_lowercase()),
+        _ => key.to_string(),
+    }
 }
 
 fn sanitize(part: &str) -> String {
@@ -90,6 +105,8 @@ mod tests {
         assert_eq!(store_key("git@github.com:ueberdosis/tiptap.git"), "github.com/ueberdosis/tiptap");
         assert_eq!(store_key("ssh://git@GitHub.com:22/ueberdosis/tiptap"), "github.com/ueberdosis/tiptap");
         assert_eq!(store_key("file:///tmp/up"), "local/tmp/up");
+        assert_eq!(store_key("https://github.com/TanStack/Router"), store_key("git@github.com:tanstack/router.git"));
+        assert_eq!(store_key("https://git.example.com/Team/Repo"), "git.example.com/Team/Repo", "case can matter on other hosts");
         assert_eq!(store_key("https://h/a/../.x"), "h/a/_.x");
     }
 
