@@ -4,6 +4,8 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-14
+
 ### Fixed
 
 - **Copies made inside a sandbox end up sharing disk space.** When a project first synced inside a sandbox, its copies came from its own fallback store. If the shared store already had those commits, the copies kept their own disk space even after promotion. The next sync with a writable shared store now re-clones them from it, without changing their files, status, or copied time. Projects already promoted get the same result with one `tiger sync --force`.
@@ -68,7 +70,8 @@ The first release: read-only, up-to-date copies of other repos inside your proje
 - **`tiger gc`** prunes what no project uses from the store; **`tiger config`** shows and changes global settings (`dir`, `store`, `concurrency`, `schedule`).
 - Binaries for macOS and Linux (arm64 and x64), installable with `brew install mareszhar/tap/tiger`.
 
-[unreleased]: https://github.com/mareszhar/tiger/compare/v0.2.1...HEAD
+[unreleased]: https://github.com/mareszhar/tiger/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/mareszhar/tiger/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/mareszhar/tiger/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mareszhar/tiger/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mareszhar/tiger/releases/tag/v0.1.0
