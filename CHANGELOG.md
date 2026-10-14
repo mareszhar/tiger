@@ -4,6 +4,8 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-13
+
 ### Changed
 
 - **Quieter progress.** While a step runs, sync adds an update only when the step advanced, at most every 5 seconds, plus one every 15 seconds when nothing moved, instead of repeating itself every 2 seconds. Copying and fallback-store cleanup now announce themselves when they start.
@@ -61,6 +63,7 @@ The first release: read-only, up-to-date copies of other repos inside your proje
 - **`tiger gc`** prunes what no project uses from the store; **`tiger config`** shows and changes global settings (`dir`, `store`, `concurrency`, `schedule`).
 - Binaries for macOS and Linux (arm64 and x64), installable with `brew install mareszhar/tap/tiger`.
 
-[unreleased]: https://github.com/mareszhar/tiger/compare/v0.2.0...HEAD
+[unreleased]: https://github.com/mareszhar/tiger/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/mareszhar/tiger/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mareszhar/tiger/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mareszhar/tiger/releases/tag/v0.1.0
