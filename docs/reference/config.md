@@ -47,7 +47,9 @@ A ref is a URL string, or a table (inline or `[refs.<id>]`) with these fields:
 | `releases` | `false` | Write `<id>.releases.md` beside the copy from GitHub Releases. GitHub only; elsewhere the ref syncs and warns |
 | `propagate` | top-level `propagate` | `false`: `sync --everywhere` run from another project leaves this ref alone |
 
-Globs follow [globset](https://docs.rs/globset) syntax: `*` stays within a folder, `**` crosses folders, `{a,b}` alternates. Folders left empty by filters are removed.
+Globs follow [globset](https://docs.rs/globset) syntax: `*` stays within a folder, `**` crosses folders, `{a,b}` alternates (`**/*.{snap,svg}`). Folders left empty by filters are removed.
+
+Filters shape the copy, not the download: sync fetches and stores each commit whole, then leaves out of the copy what the filters drop. Use them to keep agents in the parts of a repo worth reading. Excluding images, fonts, or other media to save space gains almost nothing where copies share disk space with the store (APFS, Btrfs, XFS); elsewhere each copy is a full copy, and filters do make it smaller.
 
 tiger reports every invalid field at once, with the valid names and a suggestion for typos. `tiger add`, `rm`, `pin`, and `unpin` edit the file without touching other entries, comments, or formatting, and refuse to save an edit that would make the config invalid.
 

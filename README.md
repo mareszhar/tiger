@@ -45,7 +45,7 @@ tiptap = "https://github.com/ueberdosis/tiptap"
 # Pinned: we target 3.22 until we migrate.
 zod = { url = "https://github.com/colinhacks/zod", ref = "v3.22.4" }
 
-# Only the source: the repo ships hundreds of MB of assets.
+# Only the parts worth reading: the rest is generated code and fixtures.
 [refs.big]
 url = "https://github.com/org/big"
 include = ["src/**", "docs/**"]

@@ -30,6 +30,7 @@ pub fn contents(project: &Project) -> String {
          - **Don't edit files in ref folders.** They are read-only, and every sync replaces them.\n\
          - **Refresh with `{sync}`;** `{status}` shows which refs are behind upstream, and `{show}` which commit a copy holds.\n\
          - **Add or remove refs with `{add}` and `{rm}`,** or by editing the linked config.\n\
+         - **`include` and `exclude` keep a copy focused, not small.** tiger downloads and stores each repo whole either way, and copies share disk space with the store on APFS, Btrfs, and XFS, so there's no need to exclude images, fonts, or other media to save space.\n\
          - Files here that aren't ref folders are left alone by tiger.\n"
     )
 }

@@ -926,10 +926,10 @@ fn a_name_that_is_both_a_branch_and_a_tag_is_an_error_not_a_guess() {
 }
 
 #[test]
-fn include_and_exclude_filter_the_copy() {
+fn include_and_exclude_filter_the_copy_not_the_store() {
     let env = Env::new();
     let (dir, url) = env.upstream("big");
-    env.commit(&dir, &[("src/a.snap", "snap"), ("docs/guide.md", "guide"), ("assets/huge.bin", "bin")]);
+    let sha = env.commit(&dir, &[("src/a.snap", "snap"), ("docs/guide.md", "guide"), ("assets/huge.bin", "bin")]);
     let project = env.project("app");
     env.ok(&project, &["add", &url, "--include", "src/**", "docs/**", "--exclude", "**/*.snap"], 0);
     let copy = project.join("tiger/big");
@@ -938,6 +938,14 @@ fn include_and_exclude_filter_the_copy() {
     assert!(!copy.join("src/a.snap").exists());
     assert!(!copy.join("assets").exists());
     assert!(!copy.join("README.md").exists());
+    // The store keeps the whole commit: filters save no download or store space.
+    let tree = find_dirs(&env.store().join("trees"), &sha);
+    assert_eq!(tree.len(), 1);
+    assert!(tree[0].join("assets/huge.bin").exists());
+    assert!(tree[0].join("src/a.snap").exists());
+    assert!(tree[0].join("README.md").exists());
+    // The pointer tells agents so.
+    assert!(read(project.join("tiger/TIGER.md")).contains("keep a copy focused, not small"));
     // Changing filters rebuilds the copy even though the commit didn't change.
     let config = read(project.join("tiger.toml")).replace(", exclude = [\"**/*.snap\"]", "");
     std::fs::write(project.join("tiger.toml"), config).unwrap();

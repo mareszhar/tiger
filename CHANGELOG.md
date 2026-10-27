@@ -4,6 +4,11 @@ Every change to tiger that someone using it would notice. The format follows [Ke
 
 ## [Unreleased]
 
+### Changed
+
+- **`TIGER.md` says filters keep a copy focused, not small.** tiger downloads and stores each repo whole whatever `include` and `exclude` say, and copies share disk space with the store, so agents no longer need to exclude images, fonts, and other media to save space. Each refs folder's `TIGER.md` updates on its next sync.
+- The README's filter example and the configuration reference describe filters as a way to keep agents in the parts of a repo worth reading, and say when they do save space: only where copies are full copies.
+
 ## [0.2.4] - 2026-10-14
 
 ### Changed
